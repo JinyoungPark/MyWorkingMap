@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.tmp
+*.new
+ai-work-map.html
+.claude/
+.DS_Store

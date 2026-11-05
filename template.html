@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 작업 지도</title>
+<style>
+:root{
+  --bg:#f6f5f2; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a65; --line:#e3e1db; --accent:#3b5bdb;
+  --c-read:#2f7d6d; --c-edit:#c2410c; --c-run:#475569; --c-test:#7c3aed; --c-web:#0369a1;
+  --c-agent:#b45309; --c-plan:#4d7c0f; --c-ask:#be185d; --c-share:#0e7490; --c-git:#9f1239; --c-other:#8a8780;
+  --err:#dc2626;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#161615; --panel:#1f1f1d; --ink:#ecebe7; --muted:#9c9a93; --line:#33322f; --accent:#8da2fb;
+  --c-read:#5fbfa9; --c-edit:#fb8c4f; --c-run:#94a3b8; --c-test:#b39dfa; --c-web:#4fb3e8;
+  --c-agent:#f0b04a; --c-plan:#9bd04a; --c-ask:#f472b6; --c-share:#3cc6dc; --c-git:#fb7190; --c-other:#a8a69f;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;letter-spacing:-.01em}
+header .sub{color:var(--muted);font-size:12px}
+select,button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+.layout{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 56px)}
+aside{border-right:1px solid var(--line);padding:14px;overflow:auto;max-height:calc(100vh - 56px);position:sticky;top:56px}
+main{padding:20px 24px 60px;min-width:0}
+.scard{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:8px;cursor:pointer}
+.scard.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scard b{display:block;font-size:13px;line-height:1.35}
+.scard small{color:var(--muted)}
+.minibar{display:flex;height:5px;border-radius:3px;overflow:hidden;margin-top:6px;background:var(--line)}
+.tabs{display:flex;gap:4px;margin:4px 0 18px;border-bottom:1px solid var(--line)}
+.tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;padding:8px 12px;color:var(--muted)}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+h2{font-size:20px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:14px;margin:26px 0 10px;color:var(--muted);font-weight:600}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.tile .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.tile .k{font-size:12px;color:var(--muted)}
+.bigbar{display:flex;height:22px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+/* 도형 타임라인 */
+.flow{position:relative;padding-left:4px}
+.node{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;margin-bottom:0}
+.node .rail{display:flex;flex-direction:column;align-items:center}
+.node .dot{width:30px;height:30px;border-radius:50%;background:var(--panel);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex:none}
+.node .stem{flex:1;width:2px;background:var(--line);min-height:16px}
+.node .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px;cursor:pointer;transition:border-color .15s}
+.node .box:hover{border-color:var(--accent)}
+.node.on .box{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.box .q{font-weight:600;white-space:pre-wrap;word-break:break-word;max-height:4.6em;overflow:hidden}
+.box .r{color:var(--muted);margin-top:6px;font-size:13px;white-space:pre-wrap;max-height:4.6em;overflow:hidden}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.chip{font-size:11.5px;padding:1px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.chip.err{color:var(--err)}
+.meta{font-size:11.5px;color:var(--muted);margin-top:6px}
+/* 상세 */
+.detail{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:4px}
+.mwrap{overflow:auto;border:1px dashed var(--line);border-radius:10px;padding:12px;background:var(--bg);max-height:78vh}
+.mwrap svg{max-width:none!important;height:auto}
+.shapes{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;font-size:12px;color:var(--muted);margin:10px 0}
+.shapes span{display:flex;align-items:center;gap:8px}
+.shapes svg{flex:none}
+.mem{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.mem .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;border-top:4px solid var(--accent)}
+.mem .card[data-t=feedback]{border-top-color:var(--c-ask)} .mem .card[data-t=project]{border-top-color:var(--c-agent)} .mem .card[data-t=reference]{border-top-color:var(--c-web)}
+.mem .card b{display:block} .mem .card p{margin:6px 0 0;color:var(--muted);font-size:13px;white-space:pre-wrap}
+.tag{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.files{columns:2 260px;font-size:12.5px;color:var(--muted);padding-left:18px}
+.empty{color:var(--muted);padding:30px;text-align:center}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* 업데이트 · 설정 · AI 해설 */
+.hright{margin-left:auto;display:flex;gap:8px;align-items:center}
+.ver{font-size:12px;color:var(--muted)}
+#banner .bn{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 20px;background:color-mix(in srgb,var(--accent) 12%,var(--panel));border-bottom:1px solid var(--line)}
+#banner .bn b{font-weight:650}
+.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.primary:hover{filter:brightness(1.08)}
+#settings{background:var(--panel);border-bottom:1px solid var(--line);padding:16px 20px}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.sbox{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.sbox h4{margin:0 0 8px;font-size:14px}
+.prov{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.prov:first-of-type{border-top:none}
+.prov .nm{flex:1}
+.ok{color:var(--c-plan)} .no{color:var(--muted)}
+.aibox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:12px 0 4px;border-left:4px solid var(--c-agent)}
+.aibox .md h2{font-size:15px;margin:16px 0 6px} .aibox .md h2:first-child{margin-top:4px}
+.aibox .md ul{margin:4px 0;padding-left:20px} .aibox .md p{margin:4px 0}
+.aibox .md .mwrap{max-height:none}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+input[type=text]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+/* AI 도형 해설 */
+.aisum{font-size:17px;font-weight:700;margin:8px 0 6px}
+.stleg{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-bottom:8px;flex-wrap:wrap}
+.dirrow{display:flex;align-items:center;gap:0;margin-top:6px;flex-wrap:wrap}
+.dbox{border:2px solid var(--line);border-radius:12px;padding:8px 14px;min-width:140px;background:var(--bg)}
+.dbox.now{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel))}
+.dbox small{display:block;color:var(--muted);font-size:11px}
+.darrow{flex:1;min-width:150px;display:flex;flex-direction:column;align-items:center;padding:0 8px;color:var(--muted);font-size:12px}
+.darrow i{display:block;width:100%;height:2px;background:var(--muted);position:relative;margin:4px 0}
+.darrow i:after{content:'';position:absolute;right:-2px;top:-5px;border:6px solid transparent;border-left:9px solid var(--muted)}
+.darrow.chg{color:var(--c-ask)} .darrow.chg i{background:var(--c-ask)} .darrow.chg i:after{border-left-color:var(--c-ask)}
+.phases{display:flex;flex-wrap:wrap;align-items:center;gap:8px 0;margin-top:4px}
+.ph{position:relative;width:150px;min-height:118px;border:2px solid var(--line);border-radius:14px;padding:10px 10px 8px;background:var(--bg);display:flex;flex-direction:column;gap:2px}
+.ph b{font-size:13px;line-height:1.3} .ph span{font-size:12px;color:var(--muted);line-height:1.35}
+.ph small{font-size:10.5px;color:var(--muted)} .ph em{font-style:normal;font-size:11px;margin-top:auto;padding-top:4px}
+.ph .phi{font-size:20px;line-height:1}
+.ph .phn{position:absolute;top:-9px;left:-7px;width:20px;height:20px;border-radius:50%;background:var(--panel);border:1.5px solid currentColor;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.ph.s-done{border-color:var(--c-plan);color:var(--c-plan)} .ph.s-done b{color:var(--ink)}
+.ph.s-doing{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel));box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)} .ph.s-doing b{color:var(--ink)}
+.ph.s-failed{border-color:var(--err);color:var(--err);background:color-mix(in srgb,var(--err) 8%,var(--panel))} .ph.s-failed b{color:var(--ink)}
+.ph.s-todo{border-style:dashed;border-color:var(--muted);color:var(--muted)}
+.ph.goal{border-color:var(--accent);border-radius:999px;width:auto;min-width:120px;min-height:0;padding:12px 18px;align-items:center;text-align:center}
+.pha{width:28px;text-align:center;color:var(--muted);font-size:16px} .pha.dash{opacity:.45}
+.nexts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 0;margin-top:6px}
+.nx{display:inline-flex;align-items:center;gap:6px;border:1.5px dashed var(--accent);border-radius:999px;padding:4px 12px 4px 4px;font-size:12.5px}
+.nx.first{border-style:solid;background:color-mix(in srgb,var(--accent) 12%,var(--panel))}
+.nx i{font-style:normal;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.nexts .pha{width:22px}
+/* 방향 나침반 */
+.src{display:inline-block;font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--muted);vertical-align:middle}
+h2 .src{font-size:12px;margin-right:4px;vertical-align:3px}
+.live{color:#e03131;font-weight:700;animation:blink 1.6s infinite}
+@keyframes blink{50%{opacity:.35}}
+.compass{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:14px 0 4px;border-left:4px solid var(--accent)}
+.ctitle{font-weight:700;font-size:15px}
+.sent{margin:6px 0 12px}
+.path{display:flex;align-items:stretch;overflow-x:auto;padding:16px 0 4px;gap:0}
+.chev{position:relative;flex:0 0 auto;min-width:108px;max-width:150px;padding:8px 22px 8px 26px;background:color-mix(in srgb,var(--cc) 16%,var(--panel));border-top:2px solid var(--cc);border-bottom:2px solid var(--cc);
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 50%,calc(100% - 14px) 100%,0 100%,14px 50%);margin-right:-8px;opacity:.6}
+.chev:first-child{clip-path:polygon(0 0,calc(100% - 14px) 0,100% 50%,calc(100% - 14px) 100%,0 100%);padding-left:12px}
+.chev:nth-last-child(-n+4){opacity:.85} .chev.now{opacity:1;background:color-mix(in srgb,var(--cc) 30%,var(--panel))}
+.chev b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev small{color:var(--muted);font-size:11px;white-space:nowrap}
+.chev .pv{position:absolute;top:-1px;left:22px;font-size:10px;color:var(--c-ask);font-weight:700}
+.path .goal{align-self:center;font-size:22px;padding-left:14px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:12px}
+.cbody{font-size:13px;margin-top:3px;white-space:pre-wrap}
+.plan{margin:4px 0 0;padding-left:20px;font-size:12.5px;color:var(--muted)}
+@media (max-width:820px){.layout{grid-template-columns:1fr}aside{position:static;max-height:280px;border-right:none;border-bottom:1px solid var(--line)}main{padding:16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🗺️ AI 작업 지도</h1>
+  <select id="proj" aria-label="프로젝트"></select>
+  <span class="sub" id="gen"></span>
+  <span class="hright" id="hright"></span>
+</header>
+<div id="banner"></div>
+<div id="settings" hidden></div>
+<div class="layout">
+  <aside id="list"></aside>
+  <main id="main"><div class="empty">세션을 선택하세요.</div></main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+let DATA = /*__DATA__*/null;
+const LIVE = DATA === 'LIVE';
+const TOKEN = /*__TOKEN__*/'';
+const CATS = {
+  read:{ko:'읽기·조사',ico:'🔍'}, edit:{ko:'파일 수정',ico:'✏️'}, run:{ko:'명령 실행',ico:'⚙️'},
+  test:{ko:'테스트',ico:'🧪'}, web:{ko:'웹·브라우저',ico:'🌐'}, agent:{ko:'에이전트',ico:'🤖'},
+  plan:{ko:'계획',ico:'📋'}, ask:{ko:'질문',ico:'❓'}, share:{ko:'결과 공유',ico:'📤'},
+  git:{ko:'커밋·배포',ico:'📦'}, other:{ko:'기타 도구',ico:'🧩'}
+};
+const ORDER = Object.keys(CATS);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const col = c => `var(--c-${c})`;
+const $ = s => document.querySelector(s);
+const h = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = t => t ? new Date(t).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+const dur = (a,b) => { if(!a||!b) return ''; const m=Math.round((new Date(b)-new Date(a))/60000); return m<1?'1분 미만':m<60?`${m}분`:`${Math.floor(m/60)}시간 ${m%60}분`; };
+
+function counts(steps){ const c={}; steps.forEach(s=>c[s.cat]=(c[s.cat]||0)+1); return c; }
+function sessCounts(s){ const c={}; s.turns.forEach(t=>t.steps.forEach(x=>c[x.cat]=(c[x.cat]||0)+1)); return c; }
+function bar(c, cls='minibar'){
+  const tot = Object.values(c).reduce((a,b)=>a+b,0) || 1;
+  return `<div class="${cls}">` + ORDER.filter(k=>c[k]).map(k=>`<span title="${CATS[k].ko} ${c[k]}" style="width:${c[k]/tot*100}%;background:${col(k)}"></span>`).join('') + '</div>';
+}
+function chips(c, steps){
+  const errs = steps ? steps.filter(s=>s.error).length : 0;
+  return '<div class="chips">' + ORDER.filter(k=>c[k]).map(k=>`<span class="chip" style="color:${col(k)}">${CATS[k].ico} ${CATS[k].ko} ${c[k]}</span>`).join('')
+    + (errs ? `<span class="chip err">⚠ 오류 ${errs}</span>` : '') + '</div>';
+}
+
+let P = 0, S = null, TAB = 'flow', T = null;
+
+const SRC_ICO = l => l.startsWith('WSL') ? '🐧' : l==='Mac' ? '🍎' : l==='Windows' ? '🪟' : '💻';
+const srcBadge = p => p.source ? `<span class="src">${SRC_ICO(p.source)} ${h(p.source)}${p.machine?' · '+h(p.machine):''}</span> ` : '';
+function projOptions(){ return DATA.projects.map((p,i)=>`<option value="${i}">${p.source?SRC_ICO(p.source)+' ':''}${h(p.name)} (${p.sessions.length})</option>`).join(''); }
+function genLine(){
+  const srcs = (DATA.sources||[]).map(s=>`<span class="src" title="마지막 수집 ${h(s.updated)}">${SRC_ICO(s.label)} ${h(s.label)}${s.machine?' · '+h(s.machine):''}</span>`).join(' ');
+  return (LIVE ? '<span class="live">● 실시간</span> ' : '') + `갱신 ${h(DATA.generated)} · 프로젝트 ${DATA.projects.length}개 ${srcs}`;
+}
+function init(){
+  $('#gen').innerHTML = genLine();
+  $('#proj').innerHTML = projOptions();
+  $('#proj').value = P;
+  $('#proj').onchange = e => { P=+e.target.value; S=null; renderList(); renderMain(); };
+  renderList(); renderMain();
+}
+
+/* ── 실시간: 기록이 바뀌면 선택 상태를 유지한 채 다시 그린다 ── */
+let VER = 0;
+async function refresh(first){
+  const v = +(await (await fetch('/version')).text());
+  if(v === VER) return;
+  const old = first ? null : DATA.projects[P];
+  const pName = old && old.key;
+  const sId = old && S!==null && old.sessions[S] ? old.sessions[S].id : null;
+  DATA = await (await fetch('/data.json')).json(); VER = v;
+  if(first){
+    // 처음 열 때는 가장 최근에 움직인 세션을 보여 준다
+    P = 0; S = DATA.projects[0] && DATA.projects[0].sessions.length ? 0 : null;
+    let best = '';
+    DATA.projects.forEach((p,i)=>p.sessions.forEach((s,j)=>{ if((s.end||'')>best){best=s.end;P=i;S=j;} }));
+  } else {
+    const pi = DATA.projects.findIndex(p=>p.key===pName); P = pi<0?0:pi;
+    const si = sId ? DATA.projects[P].sessions.findIndex(s=>s.id===sId) : -1; S = si<0?null:si;
+  }
+  // 보고 있는 화면이 실제로 바뀐 경우에만 다시 그린다 (클릭·스크롤이 끊기지 않게)
+  const p = DATA.projects[P];
+  const listKey = JSON.stringify(DATA.projects.map(x=>[x.key,x.sessions.length])) + JSON.stringify(p.sessions.map(x=>[x.id,x.end,x.turns.length,isActive(x)]));
+  const mainKey = JSON.stringify(S===null ? [p.memory, p.sessions.map(x=>[x.id,x.end])] : p.sessions[S]);
+  $('#gen').innerHTML = genLine();
+  if(first || listKey!==LAST.list){ if(first) init(); else { $('#proj').innerHTML = projOptions(); $('#proj').value=P; renderList(); } }
+  if(!first && mainKey!==LAST.main){ const y=scrollY; renderMain(); scrollTo(0,y); }
+  LAST = {list:listKey, main:mainKey};
+}
+let LAST = {};
+const isActive = s => s.end && (Date.now() - new Date(s.end)) < 10*60*1000;
+
+/* ── 방향 나침반: 최근 요청에서 내가 어느 쪽으로 가고 있는지 ── */
+const STOP = new Set('부탁해 부탁 만들고 만들어 만들어줘 해줄래 어디 어디에 이건 그건 저건 그리고 그럼 그러면 이거 그거 저거 이것 그것 지금 이제 일단 우선 다시 계속 혹시 정말 아주 너무 많이 이렇게 그렇게 어떻게 어떤 무슨 왜 뭐 좀 것 수 등 때 더 잘 안 못 다 또 한번 하나 해줘 해주세요 해봐 해 하자 하고 싶다 싶어 싶은 있어 없어 있는 없는 있다 없다 같은 같아 같다 되는 되어 되면 된다 했어 했는데 하는 하면 해서 확인 확인해줘 부탁 내가 너가 니가 네가 우리 여기 거기 저기 the and to of for in on is it this that with a an be are please can you do'.split(' '));
+const VERBISH = /(싶다|싶어|싶은|싶고|겠다|겠고|겠어|으면|있으면|합니다|해요|했다|했어|한다|된다|하다|좋다|좋아|좋겠|줄수|할수|볼수|는데|었는데|았는데|어줘|아줘|해봐|이다|입니다|네요|군요|하지|하게|되게)$/;
+const SUFFIX = /(으로는|에서는|에게|까지|부터|해줘요|해줘|해주세요|하고|하는|해서|했는데|합니다|이랑|으로|에서|처럼|보다|이라|라는|은|는|이|가|을|를|에|의|로|와|과|도|만|요)$/;
+function keywords(text){
+  const out=[];
+  (String(text).toLowerCase().match(/[a-z0-9][a-z0-9._+-]*[a-z0-9]|[가-힣]+/g)||[]).forEach(w=>{
+    if(/[가-힣]/.test(w)){
+      if(VERBISH.test(w)) return;   // 서술어(…싶다, …좋겠고)는 주제가 아니다
+      w = w.replace(SUFFIX,'');
+    }
+    if(w.length>=2 && !STOP.has(w) && !/^\d+$/.test(w)) out.push(w);
+  });
+  return out;
+}
+function dominant(steps){ const c=counts(steps); const k=ORDER.filter(k=>c[k] && k!=='plan').sort((a,b)=>c[b]-c[a])[0]; return k||'other'; }
+function directionHTML(turns){
+  turns = turns.filter(t=>t.prompt && t.prompt!=='(이어서 진행)');
+  if(!turns.length) return '';
+  const recent = turns.slice(-6), earlier = turns.slice(-36,-6);
+  const freq = arr => { const m={}; arr.forEach(t=>new Set(keywords(t.prompt)).forEach(k=>m[k]=(m[k]||0)+1)); return m; };
+  const fr = freq(recent), fe = freq(earlier);
+  const rising = Object.keys(fr).map(k=>({k, score: fr[k]/recent.length - (fe[k]||0)/Math.max(earlier.length,1), isNew: !fe[k], n: fr[k]}))
+    .sort((a,b)=>b.score-a.score || b.n-a.n).slice(0,6);
+  // 작업 성격 변화
+  const cr = {}; recent.forEach(t=>t.steps.forEach(s=>cr[s.cat]=(cr[s.cat]||0)+1));
+  const mainCats = ORDER.filter(k=>cr[k] && k!=='plan').sort((a,b)=>cr[b]-cr[a]).slice(0,2);
+  // 경로 (최근 8개 요청)
+  const path = turns.slice(-8);
+  const base = turns.length - path.length;
+  const chevs = path.map((t,i)=>{
+    const ks = keywords(t.prompt); const set = new Set(ks);
+    // 직전 3개 요청과 주제어가 하나도 겹치지 않으면 '방향 전환'으로 본다
+    const before = new Set(turns.slice(Math.max(0,base+i-3), base+i).flatMap(x=>keywords(x.prompt)));
+    const pivot = set.size>=2 && before.size>=3 && ![...set].some(x=>before.has(x));
+    const top = ks.sort((a,b)=>(fr[b]||0)-(fr[a]||0))[0] || cut(t.prompt,10);
+    const d = dominant(t.steps);
+    const last = i===path.length-1;
+    return `<div class="chev ${last?'now':''}" style="--cc:${col(d)}" title="${h(t.prompt)}">
+      ${pivot?'<span class="pv">↪ 방향 전환</span>':''}<b>${h(top)}</b><small>${CATS[d].ico} ${fmt(t.start)}</small></div>`;
+  }).join('');
+  const lastT = turns[turns.length-1];
+  const words = rising.slice(0,3).map(r=>`‘${h(r.k)}’`).join(', ');
+  const sentence = `최근 요청 ${recent.length}개는 ${words||'여러 주제'} 쪽으로 가고 있습니다.` + (mainCats.length ? ` AI는 주로 <b>${mainCats.map(k=>CATS[k].ko).join('·')}</b> 작업을 하고 있습니다.` : '');
+  return `<div class="compass">
+    <div class="ctitle">🧭 지금 가고 있는 방향</div>
+    <p class="sent">${sentence}</p>
+    <div class="path">${chevs}<div class="goal">🎯</div></div>
+    <div class="cgrid">
+      <div><div class="tag">지금 목표 (마지막 요청)</div><div class="cbody">👤 ${h(cut(lastT.prompt,160))}</div></div>
+      <div><div class="tag">AI가 마지막으로 보고한 것</div><div class="cbody">🤖 ${h(cut(lastT.recap||lastT.reply||'아직 진행 중…',200))}</div></div>
+      <div><div class="tag">떠오르는 주제</div><div class="chips">${rising.map(r=>`<span class="chip" style="color:var(--accent)">${r.isNew?'🆕':'▲'} ${h(r.k)}</span>`).join('')||'—'}</div>
+        ${lastT.plan&&lastT.plan.length?`<div class="tag" style="margin-top:8px">현재 계획</div><ol class="plan">${lastT.plan.map(p=>`<li>${h(p)}</li>`).join('')}</ol>`:''}</div>
+    </div></div>`;
+}
+
+function renderList(){
+  const p = DATA.projects[P];
+  if(!p){ $('#list').innerHTML='<div class="empty">기록이 없습니다.</div>'; return; }
+  let html = `<div class="scard ${S===null?'on':''}" data-i="-1"><b>📁 프로젝트 개요</b><small>세션 ${p.sessions.length}개 · 기억 ${p.memory.length}개</small></div>`;
+  html += p.sessions.map((s,i)=>`<div class="scard ${S===i?'on':''}" data-i="${i}">
+    <b>${isActive(s)?'<span class="live">●</span> ':''}${h(s.title)}</b><small>${isActive(s)?'진행 중 · ':''}${fmt(s.end)} · 요청 ${s.turns.length}개</small>${bar(sessCounts(s))}</div>`).join('');
+  $('#list').innerHTML = html;
+  $('#list').querySelectorAll('.scard').forEach(el=>el.onclick=()=>{ const i=+el.dataset.i; S = i<0?null:i; T=null; TAB='flow'; renderList(); renderMain(); });
+}
+
+function legend(){ return '<div class="legend">'+ORDER.map(k=>`<span><i style="background:${col(k)}"></i>${CATS[k].ico} ${CATS[k].ko}</span>`).join('')+'</div>'; }
+
+function renderMain(){
+  const p = DATA.projects[P]; if(!p) return;
+  if(S===null) return renderProject(p);
+  const s = p.sessions[S];
+  const c = sessCounts(s), total = Object.values(c).reduce((a,b)=>a+b,0);
+  $('#main').innerHTML = `
+    <h2>${srcBadge(p)}${h(s.title)}</h2>
+    <div class="sub" style="color:var(--muted)">${fmt(s.start)} → ${fmt(s.end)} · ${h(s.cwd||'')}</div>
+    ${directionHTML(s.turns)}
+    ${aiBox()}
+    <div class="tiles">
+      <div class="tile"><div class="v">${s.turns.length}</div><div class="k">사용자 요청</div></div>
+      <div class="tile"><div class="v">${total}</div><div class="k">AI가 한 작업(도구 사용)</div></div>
+      <div class="tile"><div class="v">${s.files.length}</div><div class="k">수정한 파일</div></div>
+      <div class="tile"><div class="v">${s.subagents}</div><div class="k">서브에이전트</div></div>
+    </div>
+    <h3>작업 구성</h3>${bar(c,'bigbar')}${legend()}
+    <div class="tabs" style="margin-top:22px">
+      <button data-t="flow" class="${TAB==='flow'?'on':''}">🔷 도형 타임라인</button>
+      <button data-t="chart" class="${TAB==='chart'?'on':''}">🧭 세션 플로차트</button>
+      <button data-t="files" class="${TAB==='files'?'on':''}">📄 수정 파일</button>
+    </div>
+    <div id="tab"></div>`;
+  $('#main').querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;renderMain();});
+  loadAI(p, s);
+  if(TAB==='flow') renderTimeline(s);
+  else if(TAB==='chart') renderSessionChart(s);
+  else $('#tab').innerHTML = s.files.length ? '<ul class="files">'+s.files.map(f=>`<li>${h(f.replace(/^\/Users\/[^/]+/,'~'))}</li>`).join('')+'</ul>' : '<div class="empty">수정한 파일이 없습니다.</div>';
+}
+
+function renderProject(p){
+  const all = {}; p.sessions.forEach(s=>Object.entries(sessCounts(s)).forEach(([k,v])=>all[k]=(all[k]||0)+v));
+  const turns = p.sessions.reduce((a,s)=>a+s.turns.length,0);
+  $('#main').innerHTML = `
+    <h2>${srcBadge(p)}📁 ${h(p.name)}</h2>
+    ${directionHTML(p.sessions.flatMap(s=>s.turns).sort((a,b)=>(a.start||'').localeCompare(b.start||'')))}
+    ${aiBox()}
+    <div class="tiles">
+      <div class="tile"><div class="v">${p.sessions.length}</div><div class="k">세션</div></div>
+      <div class="tile"><div class="v">${turns}</div><div class="k">사용자 요청</div></div>
+      <div class="tile"><div class="v">${Object.values(all).reduce((a,b)=>a+b,0)}</div><div class="k">AI 작업</div></div>
+      <div class="tile"><div class="v">${p.memory.length}</div><div class="k">기억(메모리)</div></div>
+    </div>
+    <h3>전체 작업 구성</h3>${bar(all,'bigbar')}${legend()}
+    <h3>🧠 AI가 기억하고 있는 내용</h3>
+    ${p.memory.length ? '<div class="mem">'+p.memory.map(m=>`<div class="card" data-t="${h(m.type)}"><span class="tag">${h({user:'사용자',feedback:'피드백',project:'프로젝트',reference:'참고'}[m.type]||m.type)}</span><b>${h(m.desc||m.name)}</b><p>${h(m.body)}</p></div>`).join('')+'</div>' : '<div class="empty">이 프로젝트에는 저장된 기억이 없습니다.</div>'}
+    <h3>세션 목록</h3>
+    <div class="flow">${p.sessions.map((s,i)=>`<div class="node"><div class="rail"><div class="dot">${p.sessions.length-i}</div><div class="stem"></div></div>
+      <div class="box" data-i="${i}"><div class="q">${h(s.title)}</div><div class="meta">${fmt(s.start)} · 요청 ${s.turns.length}개 · ${dur(s.start,s.end)}</div>${chips(sessCounts(s))}</div></div>`).join('')}</div>`;
+  $('#main').querySelectorAll('.box[data-i]').forEach(b=>b.onclick=()=>{S=+b.dataset.i;TAB='flow';renderList();renderMain();});
+  loadAI(p, null);
+}
+
+function renderTimeline(s){
+  $('#tab').innerHTML = `<div class="flow">` + s.turns.map((t,i)=>{
+    const c = counts(t.steps);
+    const result = t.recap || t.reply;
+    return `<div class="node ${T===i?'on':''}" id="turn${i}"><div class="rail"><div class="dot">${i+1}</div><div class="stem"></div></div>
+      <div><div class="box" data-i="${i}">
+        <div class="q">👤 ${h(t.prompt)}</div>
+        ${result?`<div class="r">🤖 ${h(result)}</div>`:''}
+        ${chips(c,t.steps)}
+        <div class="meta">${fmt(t.start)} · ${dur(t.start,t.end)}${t.interrupted?' · ⏹ 중단됨':''} · 클릭하면 플로차트</div>
+      </div>${T===i?'<div class="detail" id="det"></div>':''}</div></div>`;
+  }).join('') + '</div>';
+  $('#tab').querySelectorAll('.box[data-i]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.i; T = T===i?null:i; renderTimeline(s); if(T!==null){ renderTurnChart(s.turns[T]); document.getElementById('turn'+T).scrollIntoView({block:'start',behavior:'smooth'}); } });
+  if(T!==null && $('#det')) renderTurnChart(s.turns[T]);
+}
+
+/* ── Mermaid ───────────────────────────── */
+const esc = s => String(s ?? '').replace(/["`<>#]/g,' ').replace(/[\[\]{}|]/g,' ').replace(/\s+/g,' ').trim();
+const cut = (s,n) => { s = esc(s); return s.length>n ? s.slice(0,n)+'…' : s; };
+const wrap = (s,w=28) => { const out=[]; let line=''; for(const ch of s){ line+=ch; if(line.length>=w && /\s/.test(ch)){ out.push(line.trim()); line=''; } else if(line.length>=w+8){ out.push(line); line=''; } } if(line) out.push(line.trim()); return out.join('<br/>'); };
+const SHAPE = { read:['[/','/]'], edit:['[',']'], run:['[[',']]'], test:['[[',']]'], web:['{{','}}'], agent:['[[',']]'],
+  plan:['[\\','\\]'], ask:['{','}'], share:['>',']'], git:['[(',')]'], other:['(',')'] };
+
+function classDefs(){
+  const lines = ORDER.map(k=>{ const c=css('--c-'+k); return `classDef ${k} fill:${c}22,stroke:${c},color:${css('--ink')},stroke-width:1.5px`; });
+  lines.push(`classDef start fill:${css('--accent')}22,stroke:${css('--accent')},color:${css('--ink')},stroke-width:2px`);
+  lines.push(`classDef done fill:${css('--c-plan')}1f,stroke:${css('--c-plan')},color:${css('--ink')},stroke-width:2px`);
+  lines.push(`classDef err stroke:${css('--err')},stroke-width:3px`);
+  return lines.join('\n');
+}
+
+function groupSteps(steps){
+  const g=[];
+  for(const st of steps){
+    const last=g[g.length-1];
+    if(last && last.cat===st.cat && st.cat!=='agent' && st.cat!=='ask'){ last.items.push(st); }
+    else g.push({cat:st.cat, items:[st]});
+  }
+  return g;
+}
+
+function turnMermaid(t){
+  const L = ['flowchart TD', classDefs()];
+  L.push(`U(["👤 요청<br/>${wrap(cut(t.prompt,120))}"]):::start`);
+  let prev='U';
+  if(t.plan && t.plan.length){
+    L.push(`PL[\\"📋 계획<br/>${t.plan.slice(0,8).map((p,i)=>`${i+1}) ${cut(p,36)}`).join('<br/>')}"\\]:::plan`);
+    L.push(`${prev} --> PL`); prev='PL';
+  }
+  const groups = groupSteps(t.steps.filter(s=>s.cat!=='plan'));
+  const MAX=45; const shown = groups.slice(0,MAX);
+  shown.forEach((g,i)=>{
+    const id='G'+i, [a,b]=SHAPE[g.cat]||SHAPE.other, cat=CATS[g.cat]||CATS.other;
+    const ds=[...new Set(g.items.map(x=>cut(x.detail,40)).filter(Boolean))];
+    let label = `${cat.ico} ${cat.ko}${g.items.length>1?' ×'+g.items.length:''}`;
+    if(ds.length) label += '<br/>' + ds.slice(0,3).join('<br/>') + (ds.length>3?`<br/>외 ${ds.length-3}개`:'');
+    const err = g.items.some(x=>x.error);
+    L.push(`${id}${a}"${label}"${b}:::${g.cat}${err?'\nclass '+id+' err':''}`);
+    L.push(`${prev} --> ${id}`);
+    const sub = g.items[0].sub;
+    if(g.cat==='agent' && sub){
+      const c=sub.tools||{}; const sc=ORDER.filter(k=>c[k]).map(k=>`${CATS[k].ico}${c[k]}`).join(' ');
+      L.push(`subgraph SA${i}["🤖 ${cut(sub.type,20)} 에이전트"]\n direction TB\n S${i}["${wrap(cut(sub.desc,60))}<br/>${sc||'작업 없음'}${sub.finished?'<br/>✔ 완료':''}"]:::agent\nend`);
+      L.push(`${id} -.위임.-> S${i}`);
+    }
+    prev=id;
+  });
+  if(groups.length>MAX){ L.push(`MORE["… 이후 ${groups.length-MAX}단계 더"]:::other`); L.push(`${prev} --> MORE`); prev='MORE'; }
+  const res = t.recap || t.reply;
+  L.push(`E(["✅ 결과<br/>${wrap(cut(res||'(답변 없음)',160))}"]):::done`);
+  L.push(`${prev} --> E`);
+  return L.join('\n');
+}
+
+function sessionMermaid(s){
+  const L=['flowchart TD', classDefs()];
+  const skip = Math.max(0, s.turns.length-60), turns = s.turns.slice(skip);
+  if(skip) L.push(`X["… 이전 요청 ${skip}개"]:::other`);
+  turns.forEach((t,j)=>{
+    const i=j+skip, c=counts(t.steps); const sc=ORDER.filter(k=>c[k]).map(k=>`${CATS[k].ico}${c[k]}`).join(' ');
+    L.push(`T${i}(["요청 ${i+1} · ${wrap(cut(t.prompt,70),24)}"]):::start`);
+    const res = t.recap||t.reply;
+    L.push(`R${i}["${sc?sc+'<br/>':''}${wrap(cut(res||'',90),30)}"]:::${t.interrupted?'ask':'done'}`);
+    L.push(`T${i} --> R${i}`);
+    L.push(j ? `R${i-1} --> T${i}` : (skip ? `X --> T${i}` : ''));
+  });
+  return L.filter(Boolean).join('\n');
+}
+
+let mid=0;
+async function drawMermaid(el, code, name){
+  if(!window.mermaid){ el.innerHTML='<div class="empty">플로차트를 그리려면 인터넷 연결이 필요합니다 (Mermaid 라이브러리).</div>'; return; }
+  try{
+    const {svg} = await mermaid.render('m'+(mid++), code);
+    el.innerHTML = `<div class="row" style="margin-bottom:8px"><button class="dl">SVG로 저장</button><button class="cp">Mermaid 코드 복사</button></div><div class="mwrap">${svg}</div>`;
+    el.querySelector('.dl').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'})); a.download=name+'.svg'; a.click(); };
+    el.querySelector('.cp').onclick=e=>{ navigator.clipboard.writeText(code); e.target.textContent='복사됨 ✓'; };
+  }catch(e){ el.innerHTML=`<div class="empty">그리기 실패: ${h(e.message||e)}</div><pre style="white-space:pre-wrap;font-size:11px">${h(code)}</pre>`; }
+}
+
+function shapeLegend(){
+  const k = c => css('--c-'+c);
+  const it = (svg,label) => `<span><svg width="34" height="20" viewBox="0 0 34 20">${svg}</svg>${label}</span>`;
+  return '<div class="shapes">'+[
+    it(`<rect x="2" y="3" width="30" height="14" rx="7" fill="none" stroke="${css('--accent')}" stroke-width="1.6"/>`,'요청 / 결과'),
+    it(`<path d="M7 3h25l-5 14H2z" fill="none" stroke="${k('read')}" stroke-width="1.6"/>`,'🔍 읽기·조사'),
+    it(`<rect x="2" y="3" width="30" height="14" fill="none" stroke="${k('edit')}" stroke-width="1.6"/>`,'✏️ 파일 수정'),
+    it(`<rect x="2" y="3" width="30" height="14" fill="none" stroke="${k('run')}" stroke-width="1.6"/><path d="M6 3v14M28 3v14" stroke="${k('run')}"/>`,'⚙️ 실행 · 🤖 에이전트'),
+    it(`<path d="M8 3h18l5 7-5 7H8l-5-7z" fill="none" stroke="${k('web')}" stroke-width="1.6"/>`,'🌐 웹·브라우저'),
+    it(`<path d="M17 2l14 8-14 8L3 10z" fill="none" stroke="${k('ask')}" stroke-width="1.6"/>`,'❓ 사용자에게 질문'),
+    it(`<ellipse cx="17" cy="5" rx="12" ry="3" fill="none" stroke="${k('git')}" stroke-width="1.6"/><path d="M5 5v10c0 4 24 4 24 0V5" fill="none" stroke="${k('git')}" stroke-width="1.6"/>`,'📦 커밋·배포'),
+  ].join('')+'</div>';
+}
+
+function renderTurnChart(t){
+  const el=$('#det'); el.innerHTML = shapeLegend()+'<div id="tc"></div>';
+  drawMermaid(el.querySelector('#tc'), turnMermaid(t), 'turn-flow');
+}
+function renderSessionChart(s){
+  $('#tab').innerHTML = `<p style="color:var(--muted);margin-top:0">요청(파란 타원) → AI가 한 일과 결과(초록 상자) 순서로 이어집니다. 각 요청의 자세한 단계는 '도형 타임라인'에서 요청을 누르면 볼 수 있습니다.</p><div id="sc"></div>`;
+  drawMermaid($('#sc'), sessionMermaid(s), 'session-flow');
+}
+
+if(window.mermaid){
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({startOnLoad:false, theme: dark?'dark':'base', securityLevel:'strict', flowchart:{htmlLabels:true, curve:'basis', useMaxWidth:false}, fontFamily:'-apple-system,"Apple SD Gothic Neo",sans-serif'});
+}
+/* ── 서버 요청 ── */
+async function post(path, body={}){
+  const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-AIWM-Token':TOKEN},body:JSON.stringify(body)});
+  return r.json();
+}
+const getJ = async p => (await fetch(p)).json();
+
+/* ── 업데이트 알림 ── */
+let UPD = null;
+function renderUpdate(){
+  const u = UPD; if(!u) return;
+  $('#hright').innerHTML = `<span class="ver">v${h(u.current)}</span><button id="setbtn">⚙️ 설정</button>`;
+  $('#setbtn').onclick = toggleSettings;
+  $('#banner').innerHTML = u.available ? `<div class="bn">🔔 <b>새 버전 v${h(u.latest)}이 나왔습니다</b> <span class="sub">지금 v${h(u.current)}</span>
+    <button id="notes">무엇이 바뀌었나</button><button class="primary" id="doupd">지금 업데이트</button><span id="updmsg" class="sub"></span></div>
+    <div id="notesbox" hidden style="padding:0 20px 12px;background:color-mix(in srgb,var(--accent) 12%,var(--panel))"><div class="md">${md(u.notes||'변경 내용이 없습니다.')}</div><a href="${h(u.url)}" target="_blank">GitHub에서 보기</a></div>` : '';
+  if(u.available){
+    $('#notes').onclick=()=>{ const b=$('#notesbox'); b.hidden=!b.hidden; };
+    $('#doupd').onclick=doUpdate;
+  }
+}
+async function loadUpdate(){ try{ UPD = await getJ('/update'); renderUpdate(); if(!$('#settings').hidden) renderSettings(); }catch(e){} }
+async function doUpdate(){
+  $('#doupd').disabled = true; $('#updmsg').innerHTML = '<span class="spin"></span> 새 버전을 받는 중…';
+  const r = await post('/update/apply');
+  $('#updmsg').textContent = r.message;
+  if(!r.ok){ $('#doupd').disabled=false; return; }
+  // 프로그램이 다시 시작되면 새 화면으로 바꾼다
+  const want = UPD.latest;
+  for(let i=0;i<60;i++){
+    await new Promise(r=>setTimeout(r,2000));
+    try{ const u = await getJ('/update'); if(u.current===want){ location.reload(); return; } }catch(e){}
+  }
+  $('#updmsg').textContent = '다시 시작이 늦어지고 있습니다. 잠시 후 새로고침해 보세요.';
+}
+
+/* ── 설정: AI 연결 · 업데이트 ── */
+let AIS = null, loginPoll = null;
+function toggleSettings(){ const el=$('#settings'); el.hidden=!el.hidden; if(!el.hidden) loadAIState(); }
+async function loadAIState(){ AIS = await getJ('/ai'); renderSettings(); }
+function renderSettings(){
+  const el = $('#settings'); if(el.hidden) return;
+  const a = AIS, u = UPD;
+  const lg = a && a.login || {};
+  const provRow = (k,v) => `<div class="prov">
+      <input type="radio" name="prov" value="${k}" ${a.provider===k?'checked':''} ${v.loggedIn?'':'disabled'}>
+      <div class="nm"><b>${h(v.name)}</b><br><small class="${v.loggedIn?'ok':'no'}">${!v.installed?'이 PC에 프로그램 없음':v.loggedIn?'✔ 로그인됨'+(v.how?' ('+h(v.how)+')':''):'로그인 필요'}</small></div>
+      ${v.installed && !v.loggedIn ? `<button data-login="${k}">로그인</button>` : ''}</div>`;
+  el.innerHTML = `<div class="sgrid">
+    <div class="sbox"><h4>🤖 AI 연결 — 내 구독 계정 사용</h4>
+      <div class="sub" style="margin-bottom:6px">API 키 없이, 이 PC에 로그인된 Claude·ChatGPT 구독으로 해설을 만듭니다. AI에게는 파일·명령·웹 도구를 주지 않습니다.</div>
+      ${a ? Object.entries(a.providers).map(([k,v])=>provRow(k,v)).join('') : '<span class="spin"></span>'}
+      <div class="prov"><input type="radio" name="prov" value="off" ${a&&a.provider==='off'?'checked':''}><div class="nm">AI 해설 끄기</div></div>
+      ${lg.running ? `<div style="margin-top:8px"><span class="spin"></span> 브라우저에서 로그인하세요… ${lg.url?`<a href="${h(lg.url)}" target="_blank">로그인 페이지 열기</a>`:''}
+        ${lg.needCode?`<div class="row" style="margin-top:6px"><input type="text" id="lcode" placeholder="브라우저에 나온 코드 붙여 넣기"><button id="lsend">확인</button></div>`:''}</div>` : ''}
+      ${lg.error ? `<div style="color:var(--err);margin-top:6px">${h(lg.error)}</div>` : ''}
+      ${lg.done ? `<div class="ok" style="margin-top:6px">✔ 로그인했습니다.</div>` : ''}
+    </div>
+    <div class="sbox"><h4>⬆️ 업데이트</h4>
+      ${u ? `<div>지금 버전 <b>v${h(u.current)}</b>${u.latest?` · 최신 v${h(u.latest)}`:''}</div>
+      <div class="sub">${u.available?'🔔 새 버전이 있습니다.':u.error?h(u.error):u.latest?'✔ 최신 버전입니다.':'아직 올라온 릴리스가 없습니다.'}${u.checked?' · 확인 '+fmt(u.checked):''}</div>
+      <div class="sub">6시간마다 자동으로 확인합니다. 받는 곳: GitHub ${u.mode==='git'?'(git pull)':'릴리스'}</div>
+      <div class="row" style="margin-top:8px"><button id="chk">지금 확인</button>${u.available?'<button class="primary" id="doupd2">업데이트</button>':''}</div>` : ''}
+    </div></div>`;
+  el.querySelectorAll('input[name=prov]').forEach(r=>r.onchange=async()=>{ AIS = await post('/ai/config',{provider:r.value}); renderSettings(); renderMain(); });
+  el.querySelectorAll('[data-login]').forEach(b=>b.onclick=async()=>{ AIS = await post('/ai/login',{provider:b.dataset.login}); renderSettings(); watchLogin(); });
+  if($('#lsend')) $('#lsend').onclick=async()=>{ await post('/ai/login/code',{code:$('#lcode').value}); };
+  if($('#chk')) $('#chk').onclick=async()=>{ $('#chk').disabled=true; UPD = await post('/update/check'); renderUpdate(); renderSettings(); };
+  if($('#doupd2')) $('#doupd2').onclick=()=>{ $('#settings').hidden=true; doUpdate(); };
+}
+function watchLogin(){
+  clearInterval(loginPoll);
+  loginPoll = setInterval(async()=>{
+    AIS = await getJ('/ai');
+    if(!($('#lcode') && document.activeElement===$('#lcode'))) renderSettings();
+    if(!AIS.login.running){ clearInterval(loginPoll); renderMain(); }
+  }, 2000);
+}
+
+/* ── AI 해설 ── */
+function aiBox(){ return LIVE ? '<div class="aibox" id="aibox"><span class="spin"></span></div>' : ''; }
+let aiPoll = null;
+async function loadAI(p, s){
+  if(!LIVE || !$('#aibox')) return;
+  clearTimeout(aiPoll);
+  const id = p.key + '/' + (s ? s.id : '_project');
+  const nturns = s ? s.turns.length : p.sessions.reduce((a,x)=>a+x.turns.length,0);
+  const [st, cfg] = await Promise.all([getJ('/ai/explain?id='+encodeURIComponent(id)), AIS ? AIS : getJ('/ai')]);
+  AIS = cfg;
+  const box = $('#aibox'); if(!box) return;
+  const prov = cfg.provider, pv = prov && cfg.providers[prov];
+  const who = pv ? pv.name : '';
+  const btn = label => prov && prov!=='off' ? `<button class="primary" id="mkai">${label}</button> <span class="sub">${h(who)} 사용</span>` : `<button id="aiset">⚙️ AI 연결하기</button> <span class="sub">로그인된 구독 계정이 없습니다</span>`;
+  let html = `<div class="ctitle">🤖 AI 해설 ${s?'':'— 프로젝트 전체'}</div>`;
+  if(st.state==='running'){ html += `<p><span class="spin"></span> ${h(who)}가 해설을 쓰는 중입니다… (보통 30초~2분)</p>`; aiPoll = setTimeout(()=>loadAI(p,s), 3000); }
+  else if(st.saved){
+    const more = nturns - st.saved.turns;
+    html += `<div class="sub">${fmt(st.saved.at)} · ${h(ai_name(st.saved.provider))} · 요청 ${st.saved.turns}개 기준${more>0?` · <b>새 요청 ${more}개 늘어남</b>`:''}</div>
+      ${st.saved.visual ? aiVisual(st.saved.visual) : `<div class="md" id="aimd">${md(st.saved.text)}</div>`}<div class="row" style="margin-top:8px">${btn(more>0?'새 내용으로 다시 만들기':'다시 만들기')}</div>`;
+  } else {
+    html += `<p class="sub">AI가 이 ${s?'세션':'프로젝트'}의 기록을 읽고 무엇을 했는지, 흐름도, 지금 방향, 다음에 할 일을 쉬운 말로 정리합니다.</p><div class="row">${btn('AI 해설 만들기')}</div>`;
+  }
+  if(st.state==='error') html += `<div style="color:var(--err);margin-top:6px">${h(st.error)}</div>`;
+  box.innerHTML = html;
+  box.querySelectorAll('.mermaid-src').forEach((el,i)=>drawMermaid(el, el.textContent, 'ai-flow'));
+  if($('#mkai')) $('#mkai').onclick = async()=>{ const r = await post('/ai/explain',{project:p.key, session:s?s.id:null}); if(!r.ok) alert(r.message); loadAI(p,s); };
+  if($('#aiset')) $('#aiset').onclick = ()=>{ $('#settings').hidden=false; loadAIState(); scrollTo(0,0); };
+}
+/* AI 해설을 도형으로: 단계 흐름도 + 방향 화살표 + 다음 할 일 + 주의 */
+const ST = { done:{ico:'✅',ko:'끝남'}, doing:{ico:'🔄',ko:'진행 중'}, failed:{ico:'❌',ko:'실패·중단'}, todo:{ico:'⏳',ko:'다음 할 일'} };
+function aiMermaid(v){
+  const ph = (v.phases||[]).slice(0,12);
+  const L = [`flowchart ${ph.length<=6?'LR':'TD'}`, classDefs(),
+    `classDef sdone fill:${css('--c-plan')}1f,stroke:${css('--c-plan')},color:${css('--ink')},stroke-width:1.5px`,
+    `classDef sdoing fill:${css('--accent')}26,stroke:${css('--accent')},color:${css('--ink')},stroke-width:3px`,
+    `classDef sfailed fill:${css('--err')}1a,stroke:${css('--err')},color:${css('--ink')},stroke-width:2px`,
+    `classDef stodo fill:transparent,stroke:${css('--muted')},color:${css('--muted')},stroke-width:1.5px,stroke-dasharray:5 4`];
+  ph.forEach((x,i)=>{
+    const st = ST[x.status] ? x.status : 'done';
+    const req = Array.isArray(x.requests) && x.requests.length ? `<br/><small>요청 ${x.requests.slice(0,4).map(n=>esc(n)).join('·')}</small>` : '';
+    L.push(`P${i}["${ST[st].ico} ${esc(x.icon||'')} <b>${cut(x.title,18)}</b><br/>${wrap(cut(x.what,40),16)}${req}"]:::s${st}`);
+    if(i) L.push(`P${i-1} ${st==='todo'?'-.->':'-->'} P${i}`);
+  });
+  if(v.goal){ L.push(`G(["🎯 ${wrap(cut(v.goal,30),14)}"]):::start`); if(ph.length) L.push(`P${ph.length-1} -.-> G`); }
+  return L.join('\n');
+}
+function aiVisual(v){
+  const d = v.direction || {};
+  return `<div class="aiv">
+    <div class="aisum">${h(v.summary||'')}</div>
+    <div class="stleg">${Object.values(ST).map(x=>`<span>${x.ico} ${x.ko}</span>`).join('')}</div>
+    <div class="phases">${(v.phases||[]).slice(0,12).map((x,i,a)=>{
+      const st = ST[x.status] ? x.status : 'done';
+      const req = Array.isArray(x.requests) && x.requests.length ? `<small>요청 ${x.requests.slice(0,4).map(n=>h(n)).join('·')}</small>` : '';
+      return `<div class="ph s-${st}"><div class="phn">${i+1}</div><div class="phi">${h(x.icon||ST[st].ico)}</div><b>${h(x.title||'')}</b><span>${h(x.what||'')}</span>${req}<em>${ST[st].ico} ${ST[st].ko}</em></div>`
+        + (i<a.length-1 ? `<div class="pha ${a[i+1].status==='todo'?'dash':''}">➜</div>` : (v.goal?'<div class="pha dash">➜</div>':''));
+    }).join('')}${v.goal?`<div class="ph goal"><div class="phi">🎯</div><b>목표</b><span>${h(v.goal)}</span></div>`:''}</div>
+    <details class="sub" style="margin-top:6px"><summary>흐름도(Mermaid)로 보기 · SVG 저장</summary><div class="mermaid-src">${h(aiMermaid(v))}</div></details>
+    ${d.from||d.to ? `<div class="tag" style="margin-top:14px">방향</div>
+    <div class="dirrow">
+      <div class="dbox"><small>처음</small><b>${h(d.from||'')}</b></div>
+      <div class="darrow ${d.changed?'chg':''}"><span>${d.changed?'↪ 방향이 바뀜':'→ 같은 방향'}</span><i></i><small>${h(d.why||'')}</small></div>
+      <div class="dbox now"><small>지금</small><b>${h(d.to||'')}</b></div>
+    </div>` : ''}
+    <div class="cgrid" style="margin-top:14px">
+      <div><div class="tag">다음에 할 일</div><div class="nexts">${(v.next||[]).map((x,i)=>`<span class="nx ${i===0?'first':''}"><i>${i+1}</i>${h(x)}</span>`).join('<span class="pha">➜</span>')||'—'}</div></div>
+      <div><div class="tag">주의할 점</div><div class="chips">${(v.risks||[]).map(x=>`<span class="chip err">⚠ ${h(x)}</span>`).join('')||'<span class="chip ok" style="color:var(--c-plan)">✔ 특별히 없음</span>'}</div></div>
+    </div></div>`;
+}
+const ai_name = k => (AIS && AIS.providers[k] && AIS.providers[k].name) || k;
+
+/* 아주 작은 Markdown 변환 (제목·목록·굵게·코드·mermaid) */
+function md(src){
+  const out=[]; let list=false, code=null, buf=[];
+  const inline = t => h(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
+  const close = () => { if(list){ out.push('</ul>'); list=false; } };
+  for(const line of String(src).split('\n')){
+    if(code!==null){
+      if(/^```/.test(line)){ out.push(code==='mermaid' ? `<div class="mermaid-src">${h(buf.join('\n'))}</div>` : `<pre>${h(buf.join('\n'))}</pre>`); code=null; buf=[]; }
+      else buf.push(line);
+      continue;
+    }
+    const m = line.match(/^```\s*(\w*)/);
+    if(m){ close(); code=m[1]||''; continue; }
+    if(/^#{1,4}\s/.test(line)){ close(); out.push(`<h2>${inline(line.replace(/^#+\s*/,''))}</h2>`); }
+    else if(/^\s*[-*]\s+/.test(line)){ if(!list){ out.push('<ul>'); list=true; } out.push(`<li>${inline(line.replace(/^\s*[-*]\s+/,''))}</li>`); }
+    else if(line.trim()){ close(); out.push(`<p>${inline(line)}</p>`); }
+    else close();
+  }
+  close();
+  return out.join('');
+}
+
+if(LIVE){ loadUpdate(); setInterval(loadUpdate, 60000); }
+if(LIVE){ refresh(true).catch(e=>$('#main').innerHTML='<div class="empty">서버에 연결할 수 없습니다.</div>'); setInterval(()=>refresh(false).catch(()=>{}), 3000); }
+else init();
+</script>
+</body>
+</html>
