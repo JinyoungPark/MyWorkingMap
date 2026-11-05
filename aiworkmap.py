@@ -28,7 +28,7 @@ import ai
 import logparse as L
 import updater as U
 
-APP_DIR = Path.home() / ".ai-work-map"
+APP_DIR = Path(os.environ.get("AIWM_HOME") or Path.home() / ".ai-work-map")
 APP_DIR.mkdir(parents=True, exist_ok=True)
 LOG = APP_DIR / "agent.log"
 
@@ -154,6 +154,7 @@ class Viewer:
         self.store = store
         self.lock = threading.Lock()
         self.sig, self.version, self.body = None, 0, b"{}"
+        self.demo = False
         self.data = {"projects": []}
         self.token = secrets.token_urlsafe(24)   # 이 화면에서 보낸 요청인지 확인 (다른 웹사이트가 몰래 누르지 못하게)
         self.updater = updater or U.Updater(log=log)
@@ -182,6 +183,7 @@ class Viewer:
                 self.version += 1
                 data["version"] = self.version
                 data["app_version"] = U.current_version()
+                data["demo"] = self.demo
                 self.data = data
                 self.body = json.dumps(data, ensure_ascii=False).encode("utf-8")
                 self.sig = sig
@@ -312,12 +314,26 @@ class Viewer:
 
 def main():
     ap = argparse.ArgumentParser(description="AI 작업 지도")
-    ap.add_argument("cmd", nargs="?", default="run", choices=["run", "collect", "serve", "snapshot", "status"])
+    ap.add_argument("cmd", nargs="?", default="run", choices=["run", "collect", "serve", "snapshot", "status", "demo"])
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--interval", type=float, default=5, help="수집 간격(초)")
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument("--out", default=str(L.HERE / "ai-work-map.html"))
     a = ap.parse_args()
+
+    if a.cmd == "demo":
+        # 예시 데이터로 뷰어만 띄운다 (실제 기록·설정은 건드리지 않음)
+        import tempfile
+        import demo
+        global APP_DIR
+        APP_DIR = Path(tempfile.gettempdir()) / "aiworkmap-demo"
+        v = Viewer(demo.write(APP_DIR))
+        v.demo = True
+        if not a.no_open:
+            threading.Timer(1.0, webbrowser.open, args=(f"http://127.0.0.1:{a.port}/",)).start()
+        v.serve(a.port)
+        return
+
     store = store_dir()
 
     if a.cmd == "status":
