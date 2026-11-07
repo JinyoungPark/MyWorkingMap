@@ -162,10 +162,13 @@ class Collector:
     def _write_team(self, src):
         sessions = [s for group in self.team.get(src["key"], {}).values() for s in group]
         path = self.store / src["key"] / "_mausbot.json"
-        if sessions:
-            self._write(path, self._team_data(src["key"], src["label"], sessions))
-        elif path.exists():
-            path.unlink()
+        try:
+            if sessions:
+                self._write(path, self._team_data(src["key"], src["label"], sessions))
+            elif path.exists():
+                path.unlink()
+        except OSError as e:   # 공유 폴더 잠김 등 → 다른 프로젝트 수집은 계속
+            log(f"봇 팀 저장 실패: {e}")
 
     def _exports(self):
         """`openmausbot export` 로 받은 폴더(클라우드 봇 작업 포함)를 읽는다."""

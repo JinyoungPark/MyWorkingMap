@@ -1,6 +1,6 @@
 # 버전 기록
 
-## 다음 버전 (아직 내보내지 않음)
+## 0.2.0 (2026-11-08)
 - 🤖 MausBot 봇 팀: OpenMausBot 봇들이 한 일을 봇별 카드로 모아 보기. 봇마다 고유 색, 작업 현장 로봇에 이름표
 - Claude Code 기록에서 MausBot 봇 세션 알아보기 (봇 작업 폴더, `mcp__ogb__` 도구)
 - `openmausbot export` 폴더 읽기 (시험 기능), `config.json`의 `mausbot_exports`
