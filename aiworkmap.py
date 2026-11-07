@@ -71,6 +71,8 @@ class Collector:
         self.store = store
         self.cache = {}       # 세션 파일 경로 → (서명, 파싱 결과)
         self.proj_sig = {}    # (소스, 프로젝트 폴더) → 서명
+        self.team = {}        # 소스 키 → {프로젝트 폴더: [MausBot 봇 세션]}
+        self.export_sig = None
         self.last_run = None
 
     def _write(self, path, data):
@@ -111,6 +113,13 @@ class Collector:
                         self.cache[str(f)] = (fsig, s)
                     if s:
                         sessions.append(s)
+                # MausBot 봇 세션은 '봇 팀'으로 모은다. 봇 전용 폴더에서 일한 것은 팀에만, 내 프로젝트에서 일한 것은 양쪽에
+                bots = [s for s in sessions if s.get("bot")]
+                team = self.team.setdefault(src["key"], {})
+                if bots or pdir.name in team:
+                    team[pdir.name] = bots
+                    self._write_team(src)
+                sessions = [s for s in sessions if not (s.get("bot") or {}).get("home")]
                 memory = L.load_memory(pdir)
                 if not sessions and not memory:
                     self.proj_sig[k] = sig
@@ -133,8 +142,55 @@ class Collector:
                     continue
                 self.proj_sig[k] = sig
                 changed += 1
+        changed += self._exports()
         self.last_run = datetime.now()
         return changed
+
+    def _team_data(self, key, label, sessions):
+        sessions.sort(key=lambda s: s["start"] or "", reverse=True)
+        return {
+            "key": f"{key}/_mausbot",
+            "source": label,
+            "machine": L.machine(),
+            "name": "🤖 MausBot 봇 팀",
+            "team": True,
+            "updated": datetime.now().isoformat(timespec="seconds"),
+            "memory": [],
+            "sessions": sessions,
+        }
+
+    def _write_team(self, src):
+        sessions = [s for group in self.team.get(src["key"], {}).values() for s in group]
+        path = self.store / src["key"] / "_mausbot.json"
+        if sessions:
+            self._write(path, self._team_data(src["key"], src["label"], sessions))
+        elif path.exists():
+            path.unlink()
+
+    def _exports(self):
+        """`openmausbot export` 로 받은 폴더(클라우드 봇 작업 포함)를 읽는다."""
+        dirs = L.maus_export_dirs(config().get("mausbot_exports") or [])
+        files = [f for d in dirs for f in sorted((d / "transcripts").glob("*.json"))]
+        try:
+            sig = tuple((str(f), f.stat().st_size, int(f.stat().st_mtime)) for f in files)
+        except OSError:
+            return 0
+        if sig == self.export_sig:
+            return 0
+        sessions = [s for f in files if (s := L.parse_maus_transcript(f, f.parent.parent.name))]
+        key = L._key("MausBot-export")
+        path = self.store / key / "_mausbot.json"
+        had = path.exists()
+        try:
+            if sessions:
+                self._write(path, self._team_data(key, "MausBot 내보내기", sessions))
+            elif had:
+                path.unlink()
+        except OSError as e:
+            log(f"MausBot 내보내기 저장 실패: {e}")
+            return 0
+        self.export_sig = sig
+        return int(bool(sessions) or had)
 
     def loop(self, interval):
         log(f"수집기 시작 · 저장소 {self.store}")
@@ -341,6 +397,8 @@ def main():
         print(f"저장소: {store}")
         for s in L.find_sources():
             print(f"기록 위치 [{s['label']}] {s['root']}")
+        for d in L.maus_export_dirs(config().get("mausbot_exports") or []):
+            print(f"MausBot 내보내기 {d}")
         for f in sorted(store.glob("*/*.json")):
             print(f"  요약: {f.relative_to(store)}")
         return

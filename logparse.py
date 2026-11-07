@@ -14,11 +14,23 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # ── 도구 분류 ────────────────────────────────────────────
+# MausBot(OpenMausBot)이 Claude Code에 붙이는 MCP 서버 이름. 공개 문서(runtime-contract.md)의 mcp__ogb__ask_user 에서 확인
+MAUS_TOOL = "mcp__ogb__"
 READ_CMDS = ("cat ", "ls", "grep ", "rg ", "find ", "head ", "tail ", "sed -n", "wc ", "tree", "pwd", "file ", "stat ", "du ", "less ")
 
 
 def classify(name, inp):
     n = name
+    if n.startswith(MAUS_TOOL):
+        # MausBot이 봇에게 붙여 주는 도구: 사용자에게 묻기, 다른 봇과 주고받기
+        low = n.lower()
+        if "ask" in low or "approv" in low or "permission" in low:
+            return "ask"
+        if "search" in low or low.endswith(("list_bots", "list_channels")) or "_get_" in low:
+            return "read"
+        return "agent"
+    if n in ("WebFetch", "WebSearch") or "Browser" in n or "claude-in-chrome" in n:
+        return "web"
     if n in ("Read", "Grep", "Glob", "LS", "NotebookRead", "ToolSearch") or "search" in n.lower() or n.endswith("__read_document"):
         return "read"
     if n in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
@@ -34,8 +46,6 @@ def classify(name, inp):
         return "run"
     if n in ("Monitor", "TaskStop") or n.startswith("mcp__terminal__"):
         return "run"
-    if n in ("WebFetch", "WebSearch") or "Browser" in n or "claude-in-chrome" in n:
-        return "web"
     if n in ("Agent", "Task", "Workflow", "SendMessage") or "start_session" in n:
         return "agent"
     if n in ("TodoWrite", "EnterPlanMode", "ExitPlanMode") or n.endswith("update_plan"):
@@ -135,6 +145,7 @@ def parse_session(path):
     turns, cur, tool_index = [], None, {}
     cwd = None
     files_changed = set()
+    maus_tools = False
 
     def new_turn(prompt, ts):
         return {"prompt": prompt, "start": ts, "end": ts, "steps": [], "reply": "", "recap": "", "plan": [], "interrupted": False}
@@ -189,6 +200,7 @@ def parse_session(path):
                 cur["reply"] = c["text"].strip()[:700]
             elif c.get("type") == "tool_use":
                 name, inp = c.get("name", ""), c.get("input") or {}
+                maus_tools = maus_tools or name.startswith(MAUS_TOOL)
                 cat = classify(name, inp)
                 if cat == "wrap":
                     cur["recap"] = (inp.get("recap") or "")[:500]
@@ -210,7 +222,7 @@ def parse_session(path):
     turns = [x for x in turns if x["steps"] or x["reply"] or x["recap"]]
     if not turns:
         return None
-    return {
+    out = {
         "id": sid,
         "title": title or turns[0]["prompt"][:50],
         "cwd": cwd,
@@ -219,6 +231,131 @@ def parse_session(path):
         "turns": turns,
         "subagents": len(subagents),
         "files": sorted(files_changed)[:200],
+    }
+    bot = maus_bot(cwd, maus_tools)
+    if bot:
+        out["bot"] = bot
+    return out
+
+
+# ── MausBot(OpenMausBot) 봇 팀 ──────────────────────────────
+# MausBot은 봇마다 내 PC의 claude CLI를 띄우므로 봇의 작업도 Claude Code 기록에 남는다.
+# 봇 작업 폴더 모양(공개 문서 files.md): Documents/MausBot/<봇>/<대화>, task-workspaces/<봇>/<대화>
+_MAUS_DIR = re.compile(r"[/\\](?:MausBot|task-workspaces)[/\\]([^/\\]+)(?:[/\\]([^/\\]+))?")
+
+
+def maus_bot(cwd, maus_tools=False):
+    """MausBot 봇이 한 세션이면 {"name", "thread", "home"}. home=True면 봇 전용 작업 폴더에서 일한 것."""
+    m = _MAUS_DIR.search(cwd or "")
+    if m:
+        return {"app": "MausBot", "name": m.group(1), "thread": m.group(2) or "", "home": True}
+    if cwd and (".openmausbot" in cwd or ".mausbot" in cwd):
+        return {"app": "MausBot", "name": os.path.basename(cwd.rstrip("/\\")) or "봇", "thread": "", "home": True}
+    if maus_tools:   # 내 프로젝트 폴더에서 일한 봇: 이름은 모르므로 폴더 이름으로
+        return {"app": "MausBot", "name": os.path.basename((cwd or "").rstrip("/\\\\")) or "봇", "thread": "", "home": False}
+    return None
+
+
+def maus_export_dirs(extra=()):
+    """`openmausbot export ... --out <폴더>` 로 받은 폴더들. 기본 위치 ~/.ai-work-map/mausbot 아래에 두면 자동으로 읽는다."""
+    roots = [Path(os.environ.get("AIWM_HOME") or Path.home() / ".ai-work-map") / "mausbot", *map(Path, extra)]
+    out = []
+    for r in roots:
+        r = Path(os.path.expanduser(str(r)))
+        if (r / "transcripts").is_dir():
+            out.append(r)
+        elif r.is_dir():
+            out += sorted(d for d in r.iterdir() if (d / "transcripts").is_dir())
+    return out
+
+
+def _first(d, *keys):
+    for k in keys:
+        v = d.get(k)
+        if v not in (None, "", [], {}):
+            return v
+    return None
+
+
+def _text(v):
+    if isinstance(v, str):
+        return v
+    if isinstance(v, list):
+        return "\n".join(_text(x) for x in v if x)
+    if isinstance(v, dict):
+        return _text(_first(v, "text", "content", "body", "value") or "")
+    return ""
+
+
+def _messages(doc):
+    if isinstance(doc, list):
+        return doc
+    if isinstance(doc, dict):
+        for k in ("messages", "items", "events", "transcript", "entries"):
+            if isinstance(doc.get(k), list):
+                return doc[k]
+    return []
+
+
+def parse_maus_transcript(path, default_bot=""):
+    """내보내기의 transcripts/*.json 한 개 → 세션 하나.
+    MausBot은 이 파일의 칸 이름을 문서로 밝히지 않아서, 흔한 이름(role·author·text·content·tool …)을 두루 받아들인다."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    meta = doc if isinstance(doc, dict) else {}
+    turns, cur, bot_names = [], None, {}
+    for m in _messages(doc):
+        if not isinstance(m, dict):
+            continue
+        role = str(_first(m, "role", "kind", "type", "from") or "").lower()
+        who = _first(m, "author", "sender", "bot", "botName", "name")
+        who = _text(who) if not isinstance(who, dict) else _text(_first(who, "name", "id") or "")
+        ts = _first(m, "timestamp", "ts", "createdAt", "created_at", "time", "date")
+        ts = str(ts) if ts is not None else None
+        text = clean_prompt(_text(_first(m, "text", "content", "body", "message") or ""))
+        tool = _first(m, "tool", "toolName", "tool_name")
+        if isinstance(tool, dict):
+            tool = _first(tool, "name", "id")
+        is_user = role in ("user", "human", "you", "me", "owner") or str(who).lower() in ("user", "you", "me")
+        if is_user and text:
+            cur = {"prompt": text[:600], "start": ts, "end": ts, "steps": [], "reply": "", "recap": "", "plan": [], "interrupted": False}
+            turns.append(cur)
+            continue
+        if cur is None:
+            cur = {"prompt": "(봇이 먼저 시작)", "start": ts, "end": ts, "steps": [], "reply": "", "recap": "", "plan": [], "interrupted": False}
+            turns.append(cur)
+        cur["end"] = ts or cur["end"]
+        if who and not is_user:
+            bot_names[who] = bot_names.get(who, 0) + 1
+        if "permission" in role or "approval" in role:
+            cur["steps"].append({"cat": "ask", "tool": "approval", "detail": (text or "허락 요청")[:90]})
+        elif tool or "tool" in role:
+            name = str(tool or _first(m, "name") or "tool")
+            inp = _first(m, "input", "args", "arguments", "params") or {}
+            inp = inp if isinstance(inp, dict) else {"command": str(inp)}
+            step = {"cat": classify(name, inp), "tool": name.split("__")[-1], "detail": detail(name, inp) or text[:90]}
+            if _first(m, "error", "is_error", "isError"):
+                step["error"] = True
+            cur["steps"].append(step)
+        elif text:
+            cur["reply"] = text[:700]
+    turns = [t for t in turns if t["steps"] or t["reply"]]
+    if not turns:
+        return None
+    name = max(bot_names, key=bot_names.get) if bot_names else default_bot
+    title = _text(_first(meta, "title", "name", "thread", "subject") or "") or turns[0]["prompt"][:50]
+    return {
+        "id": "maus-" + Path(path).stem,
+        "title": title[:80],
+        "cwd": None,
+        "start": turns[0]["start"],
+        "end": turns[-1]["end"],
+        "turns": turns,
+        "subagents": 0,
+        "files": [],
+        "bot": {"app": "MausBot", "name": name or "봇", "thread": Path(path).stem, "home": True, "export": True},
     }
 
 

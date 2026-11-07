@@ -148,6 +148,7 @@ input[type=text]{font:inherit;color:var(--ink);background:var(--bg);border:1px s
 .bubble:after{content:'';position:absolute;top:100%;left:50%;margin-left:-6px;border:6px solid transparent;border-top-color:var(--ink)}
 .bot.down{transform:translate(-50%,40%)}
 .bot.down .bubble{bottom:auto;top:105%}
+.bot.down .name{top:auto;bottom:100%}
 .bot.down .bubble:after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:var(--ink)}
 .bot.edge-r .bubble{left:auto;right:-30%;transform:none} .bot.edge-r .bubble:after{left:auto;right:18px}
 .bot.edge-l .bubble{left:-30%;transform:none} .bot.edge-l .bubble:after{left:18px}
@@ -162,6 +163,16 @@ input[type=text]{font:inherit;color:var(--ink);background:var(--bg);border:1px s
 .src{display:inline-block;font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--muted);vertical-align:middle}
 h2 .src{font-size:12px;margin-right:4px;vertical-align:3px}
 .live{color:#e03131;font-weight:700;animation:blink 1.6s infinite}
+.botb{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;color:var(--bc);border:1px solid color-mix(in srgb,var(--bc) 45%,transparent);background:color-mix(in srgb,var(--bc) 10%,var(--panel));vertical-align:middle;margin-right:4px}
+.team{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:10px}
+.bcard{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--bc);border-radius:12px;padding:12px 14px;cursor:pointer;display:grid;grid-template-columns:44px 1fr;gap:4px 10px;align-items:center}
+.bcard:hover{border-color:var(--bc)}
+.bcard svg{width:44px;display:block;grid-row:span 2}
+.bcard b{font-size:14.5px}
+.bcard small{color:var(--muted);font-size:12px}
+.bcard .now{grid-column:1/-1;font-size:12.5px;color:var(--ink);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bcard .minibar{grid-column:1/-1}
+.bot .name{position:absolute;top:100%;left:50%;transform:translateX(-50%);font-size:11px;font-weight:700;white-space:nowrap;color:var(--bc);background:var(--panel);border:1px solid var(--bc);border-radius:999px;padding:0 6px}
 @keyframes blink{50%{opacity:.35}}
 .compass{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:14px 0 4px;border-left:4px solid var(--accent)}
 .ctitle{font-weight:700;font-size:15px}
@@ -228,9 +239,36 @@ function chips(c, steps){
 
 let P = 0, S = null, TAB = 'scene', T = null;
 
+/* ── MausBot 봇 팀: 봇마다 정해진 색, 이름표 ── */
+const BOT_COLORS = ['--c-agent','--c-read','--c-test','--c-web','--c-ask','--c-plan','--c-share','--c-edit','--c-git'];
+// 모든 봇 이름을 가나다순으로 세워 차례로 색을 준다 → 봇끼리 색이 겹치지 않고, 어느 화면에서나 같은 색
+let BOT_IDX = {key:null, map:{}};
+const botColorVar = name => {
+  const names = [...new Set(DATA.projects.flatMap(p=>p.sessions.filter(s=>s.bot).map(s=>s.bot.name)))].sort();
+  const key = names.join('\n');
+  if(BOT_IDX.key!==key) BOT_IDX = {key, map:Object.fromEntries(names.map((n,i)=>[n,BOT_COLORS[i%BOT_COLORS.length]]))};
+  return BOT_IDX.map[name] || BOT_COLORS[0];
+};
+const botBadge = s => s.bot ? `<span class="botb" style="--bc:var(${botColorVar(s.bot.name)})">🤖 ${h(s.bot.name)}</span>` : '';
+function teamOf(p){
+  const bots = {};
+  p.sessions.forEach((s,i)=>{ if(!s.bot) return; const b = bots[s.bot.name] ||= {name:s.bot.name, idx:[], counts:{}, last:'', live:false, now:''};
+    b.idx.push(i); Object.entries(sessCounts(s)).forEach(([k,v])=>b.counts[k]=(b.counts[k]||0)+v);
+    if((s.end||'')>b.last){ b.last=s.end||''; const t=s.turns[s.turns.length-1]; b.now=t?(t.recap||t.reply||t.prompt):''; }
+    if(isActive(s)) b.live=true; });
+  return Object.values(bots).sort((a,b)=>b.last.localeCompare(a.last));
+}
+function teamHTML(p){
+  const team = teamOf(p); if(!team.length) return '';
+  return `<h3>🤖 봇 팀 <span class="sub" style="color:var(--muted);font-weight:400">MausBot 봇 ${team.length}명 · 누르면 그 봇의 최근 대화</span></h3>
+    <div class="team">${team.map(b=>`<div class="bcard" data-i="${b.idx[0]}" style="--bc:var(${botColorVar(b.name)})">${botSVG(css(botColorVar(b.name)))}
+      <b>${b.live?'<span class="live">●</span> ':''}${h(b.name)}</b><small>대화 ${b.idx.length}개 · ${b.live?'지금 작업 중':fmt(b.last)}</small>
+      <div class="now">${h(cut(b.now,60))}</div>${bar(b.counts)}</div>`).join('')}</div>`;
+}
+
 const SRC_ICO = l => l.startsWith('WSL') ? '🐧' : l==='Mac' ? '🍎' : l==='Windows' ? '🪟' : '💻';
 const srcBadge = p => p.source ? `<span class="src">${SRC_ICO(p.source)} ${h(p.source)}${p.machine?' · '+h(p.machine):''}</span> ` : '';
-function projOptions(){ return DATA.projects.map((p,i)=>`<option value="${i}">${p.source?SRC_ICO(p.source)+' ':''}${h(p.name)} (${p.sessions.length})</option>`).join(''); }
+function projOptions(){ return DATA.projects.map((p,i)=>`<option value="${i}">${p.source&&!p.team?SRC_ICO(p.source)+' ':''}${h(p.name)} (${p.sessions.length})</option>`).join(''); }
 function genLine(){
   const srcs = (DATA.sources||[]).map(s=>`<span class="src" title="마지막 수집 ${h(s.updated)}">${SRC_ICO(s.label)} ${h(s.label)}${s.machine?' · '+h(s.machine):''}</span>`).join(' ');
   return (DATA.demo ? '<span class="src" style="color:var(--c-agent)">예시 데이터</span> ' : '') + (LIVE ? '<span class="live">● 실시간</span> ' : '') + `갱신 ${h(DATA.generated)} · 프로젝트 ${DATA.projects.length}개 ${srcs}`;
@@ -346,7 +384,7 @@ function renderList(){
   if(!p){ $('#list').innerHTML='<div class="empty">기록이 없습니다.</div>'; return; }
   let html = `<div class="scard ${S===null?'on':''}" data-i="-1"><b>📁 프로젝트 개요</b><small>세션 ${p.sessions.length}개 · 기억 ${p.memory.length}개</small></div>`;
   html += p.sessions.map((s,i)=>`<div class="scard ${S===i?'on':''}" data-i="${i}">
-    <b>${isActive(s)?'<span class="live">●</span> ':''}${h(s.title)}</b><small>${isActive(s)?'진행 중 · ':''}${fmt(s.end)} · 요청 ${s.turns.length}개</small>${bar(sessCounts(s))}</div>`).join('');
+    <b>${isActive(s)?'<span class="live">●</span> ':''}${botBadge(s)}${h(s.title)}</b><small>${isActive(s)?'진행 중 · ':''}${fmt(s.end)} · 요청 ${s.turns.length}개</small>${bar(sessCounts(s))}</div>`).join('');
   $('#list').innerHTML = html;
   $('#list').querySelectorAll('.scard').forEach(el=>el.onclick=()=>{ const i=+el.dataset.i; S = i<0?null:i; T=null; TAB='scene'; renderList(); renderMain(); });
 }
@@ -359,7 +397,7 @@ function renderMain(){
   const s = p.sessions[S];
   const c = sessCounts(s), total = Object.values(c).reduce((a,b)=>a+b,0);
   $('#main').innerHTML = `
-    <h2>${srcBadge(p)}${h(s.title)}</h2>
+    <h2>${srcBadge(p)}${botBadge(s)}${h(s.title)}</h2>
     <div class="sub" style="color:var(--muted)">${fmt(s.start)} → ${fmt(s.end)} · ${h(s.cwd||'')}</div>
     ${directionHTML(s.turns)}
     ${aiBox()}
@@ -399,12 +437,13 @@ function renderProject(p){
       <div class="tile"><div class="v">${p.memory.length}</div><div class="k">기억(메모리)</div></div>
     </div>
     <h3>전체 작업 구성</h3>${bar(all,'bigbar')}${legend()}
-    <h3>🧠 AI가 기억하고 있는 내용</h3>
-    ${p.memory.length ? '<div class="mem">'+p.memory.map(m=>`<div class="card" data-t="${h(m.type)}"><span class="tag">${h({user:'사용자',feedback:'피드백',project:'프로젝트',reference:'참고'}[m.type]||m.type)}</span><b>${h(m.desc||m.name)}</b><p>${h(m.body)}</p></div>`).join('')+'</div>' : '<div class="empty">이 프로젝트에는 저장된 기억이 없습니다.</div>'}
-    <h3>세션 목록</h3>
+    ${teamHTML(p)}
+    ${p.team ? '' : `<h3>🧠 AI가 기억하고 있는 내용</h3>
+    ${p.memory.length ? '<div class="mem">'+p.memory.map(m=>`<div class="card" data-t="${h(m.type)}"><span class="tag">${h({user:'사용자',feedback:'피드백',project:'프로젝트',reference:'참고'}[m.type]||m.type)}</span><b>${h(m.desc||m.name)}</b><p>${h(m.body)}</p></div>`).join('')+'</div>' : '<div class="empty">이 프로젝트에는 저장된 기억이 없습니다.</div>'}`}
+    <h3>${p.team?'대화 목록':'세션 목록'}</h3>
     <div class="flow">${p.sessions.map((s,i)=>`<div class="node"><div class="rail"><div class="dot">${p.sessions.length-i}</div><div class="stem"></div></div>
-      <div class="box" data-i="${i}"><div class="q">${h(s.title)}</div><div class="meta">${fmt(s.start)} · 요청 ${s.turns.length}개 · ${dur(s.start,s.end)}</div>${chips(sessCounts(s))}</div></div>`).join('')}</div>`;
-  $('#main').querySelectorAll('.box[data-i]').forEach(b=>b.onclick=()=>{S=+b.dataset.i;TAB='scene';renderList();renderMain();});
+      <div class="box" data-i="${i}"><div class="q">${botBadge(s)}${h(s.title)}</div><div class="meta">${fmt(s.start)} · 요청 ${s.turns.length}개 · ${dur(s.start,s.end)}</div>${chips(sessCounts(s))}</div></div>`).join('')}</div>`;
+  $('#main').querySelectorAll('.box[data-i],.bcard[data-i]').forEach(b=>b.onclick=()=>{S=+b.dataset.i;TAB='scene';renderList();renderMain();});
   loadAI(p, null);
 }
 
@@ -473,7 +512,7 @@ function renderScene(s){
       ${stations.map(([k,v])=>`<div class="st ${k==='user'?'user':''}" id="st-${k}" style="left:${v.x}%;top:${v.y}%;--cc:${k==='user'?'var(--accent)':col(k)}">
         <div class="si">${k==='user'?'👤':(CATS[k]||CATS.other).ico}</div><div class="sl">${k==='user'?'사용자':STN_KO[k]}</div><span class="sc" hidden></span></div>`).join('')}
       <div id="minis"></div>
-      <div class="bot" id="bot">${botSVG(css('--c-agent'))}<div class="bubble" id="bubble"></div></div>
+      <div class="bot" id="bot" ${s.bot?`style="--bc:var(${botColorVar(s.bot.name)})"`:''}>${botSVG(css(s.bot?botColorVar(s.bot.name):'--c-agent'))}${s.bot?`<div class="name">${h(s.bot.name)}</div>`:''}<div class="bubble" id="bubble"></div></div>
     </div>
     <div class="sctl">
       <button id="scplay">${SC.playing?'⏸ 멈춤':'▶ 처음부터 재생'}</button>

@@ -99,6 +99,40 @@ def pipeline():
             "name": "~/work/report-merge", "updated": _t(0), "sessions": [s], "memory": []}
 
 
+def bot_team():
+    """MausBot 봇 셋이 나눠 일한 기록 (봇 팀 화면용)."""
+    def bs(sid, bot, title, turns):
+        return {"id": sid, "title": title, "cwd": f"~/Documents/MausBot/{bot}/{sid}", "start": turns[0]["start"],
+                "end": turns[-1]["end"], "turns": turns, "subagents": 0, "files": [],
+                "bot": {"app": "MausBot", "name": bot, "thread": sid, "home": True}}
+    sessions = [
+        bs("maus-lead-1", "팀장", "출시 준비 나눠 맡기기", [
+            turn(90, 10, "다음 주 출시 준비를 봇들에게 나눠 맡겨줘", [
+                S("plan", "계획"), S("agent", "조사 봇에게: 경쟁 앱 알림 기능 조사", tool="mcp__ogb__delegate"),
+                S("agent", "개발 봇에게: 알림 설정 화면 만들기", tool="mcp__ogb__delegate"),
+                S("ask", "출시일을 금요일로 정해도 될까요?", tool="mcp__ogb__ask_user")],
+                "조사 봇과 개발 봇에게 일을 나눴고, 출시일은 금요일로 정했습니다.",
+                ["일 나누기", "출시일 정하기", "결과 모으기"]),
+            turn(5, 2, "진행 상황 모아줘", [S("read", "조사 봇 보고 읽기", tool="mcp__ogb__get_bot_messages"),
+                                         S("read", "개발 봇 보고 읽기", tool="mcp__ogb__get_bot_messages")], "")]),
+        bs("maus-research-1", "조사", "경쟁 앱 알림 기능 조사", [
+            turn(85, 30, "경쟁 앱 알림 기능 조사", [
+                S("web", "할 일 앱 알림 기능 검색"), S("web", "앱 3곳 설명서 읽기"), S("edit", "조사결과.md"),
+                S("share", "팀장 봇에게 보고", tool="mcp__ogb__send_message")],
+                "앱 3곳을 비교했습니다. 모두 '마감 전 알림'과 '조용한 시간'을 지원합니다.")]),
+        bs("maus-dev-1", "개발", "알림 설정 화면 만들기", [
+            turn(80, 40, "알림 설정 화면 만들기", [
+                S("read", "settings.js"), S("edit", "notify-settings.html"), S("edit", "settings.js"),
+                S("run", "개발 서버 켜기"), S("test", "설정 저장 테스트", error=True), S("edit", "settings.js"),
+                S("test", "설정 저장 테스트 다시"), S("ask", "파일 덮어쓰기 허락 요청", tool="approval")],
+                "알림 설정 화면을 만들었습니다. 저장 오류 하나를 고쳤고 테스트는 통과합니다."),
+            turn(3, 3, "조용한 시간 기능도 넣어줘", [S("read", "조사결과.md"), S("edit", "settings.js")], "")]),
+    ]
+    sessions.sort(key=lambda s: s["start"], reverse=True)
+    return {"key": "Mac_demo/_mausbot", "source": "Mac", "machine": "my-mac", "name": "🤖 MausBot 봇 팀",
+            "team": True, "updated": _t(0), "sessions": sessions, "memory": []}
+
+
 VISUAL = {
     "summary": "팀 할 일 웹앱을 만들고 로그인·보안·배포까지 마친 뒤 알림을 붙이는 중",
     "goal": "팀 전체가 쓰는 할 일 앱",
@@ -121,7 +155,7 @@ VISUAL = {
 def write(home):
     home = Path(home)
     store = home / "store"
-    for p in (todo_app(), pipeline()):
+    for p in (todo_app(), pipeline(), bot_team()):
         f = store / p["key"].split("/")[0] / (p["key"].split("/")[1] + ".json")
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
