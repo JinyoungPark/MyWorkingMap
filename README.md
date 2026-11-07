@@ -129,7 +129,7 @@ PC마다 백그라운드에서 작업 기록을 모으고, 브라우저 화면�
   { "mausbot_exports": ["~/Downloads/mausbot-export"] }
   ```
 - ⚠️ MausBot은 기록 파일의 칸 이름을 문서로 밝히지 않아서, 내보내기 읽기는 흔한 이름을 두루 받아들이는 **시험 기능**입니다. Codex·Grok으로 도는 봇은 아직 보이지 않습니다(Claude Code 기록만 읽기 때문).
-- 💡 MausBot 봇이 내 문서를 찾게 하려면, MyDocSearch의 MCP 검색 도구를 Claude Code에 사용자 범위로 등록해 두면 됩니다. 봇이 쓰는 `claude`가 같은 설정을 읽습니다.
+- 💡 MausBot 봇이 내 문서를 찾게 하려면: MyDocSearch → 설정 → AI·보안 → **AI 봇 (MausBot 등) · 설정 복사**를 누른 뒤, MausBot의 Plugins → MCP servers에 붙여 넣습니다. 이 설정은 보는 도구만 줍니다. MausBot은 Claude 봇을 띄울 때 이 PC의 Claude Code MCP 설정을 읽지 않으므로(`--strict-mcp-config`) MausBot에 따로 등록해야 합니다.
 
 ---
 
