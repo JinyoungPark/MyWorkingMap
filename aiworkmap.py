@@ -332,6 +332,20 @@ class Viewer:
                 return {"ok": e.stop(body.get("run"))}
             if path == "/bots/answer":
                 return {"ok": e.answer(body.get("id"), body.get("allow"), body.get("text"))}
+            if path == "/bots/team/save":
+                return {"ok": True, "team": e.save_team(body)}
+            if path == "/bots/team/delete":
+                e.delete_team(body.get("id"))
+                return {"ok": True}
+            if path == "/bots/team/example":
+                return {"ok": True, "team": e.example_team()}
+            if path == "/bots/team/send":
+                return {"ok": True, "job": e.send_team(body.get("team"), body.get("text"))["id"]}
+            if path == "/bots/team/stop":
+                return {"ok": e.stop_team(body.get("job"))}
+            if path == "/bots/team/decide":
+                e.decide(body.get("job"), body.get("verdict"), body.get("note"))
+                return {"ok": True}
         except (ValueError, RuntimeError) as x:
             return {"ok": False, "message": str(x)}
         return None

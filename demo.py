@@ -214,6 +214,31 @@ def collabo(engine):
             children=("d-조사", "d-개발")),
     ]
     engine.runs = {r["id"]: r for r in runs}
+    # 팀: 팀장이 나눠 맡기고 검토 → 최종 결과를 내가 판단
+    engine.teams = [{"id": "t-출시", "name": "출시 팀", "lead": "팀장", "members": ["조사", "개발", "정리"], "created": _t(3000), "last_fired": None,
+                     "schedule": {"kind": "weekdays", "time": "09:00", "minutes": 60, "task": "어제 들어온 사용자 의견을 모아 오늘 고칠 것 3가지를 정해줘"}}]
+    def st(step, rnd, b, task, status, ago, end, text="", run=None, temp=False):
+        return {"step": step, "round": rnd, "bot": b, "bot_name": b, "temp": temp, "task": task, "run": run, "status": status,
+                "text": text, "started": _t(ago), "ended": _t(end) if end is not None else None}
+    engine.jobs = {
+        "j-공지": {"id": "j-공지", "team": "t-출시", "team_name": "출시 팀", "text": "다음 주 알림 기능 출시 공지문 초안을 만들어줘. 사용자 입장에서 바뀌는 점 위주로",
+                 "trigger": "user", "status": "wait", "started": _t(70), "ended": _t(52), "note": "", "error": "", "stop": False,
+                 "stages": [st("plan", 0, "팀장", "계획", "done", 70, 69, "조사·정리 봇에게 나눠 맡깁니다."),
+                            st("task", 1, "조사", "지난 공지문 3개의 말투와 길이를 정리해줘", "done", 69, 64, "평균 5문장, 존댓말"),
+                            st("task", 1, "정리", "알림 기능에서 사용자가 체감하는 변화 3가지를 쉬운 말로", "done", 69, 62, "마감 알림·조용한 시간·팀즈 알림"),
+                            st("review", 1, "팀장", "1차 검토", "done", 62, 60, "용어 하나가 어렵습니다. 다시 맡깁니다."),
+                            st("task", 2, "법무 검토", "공지문에 개인정보 관련 표현이 맞는지 확인", "done", 60, 55, "‘알림 기록 30일 보관’을 밝히세요", temp=True),
+                            st("review", 2, "팀장", "2차 검토", "done", 55, 52, "")],
+                 "final": "**결론:** 다음 주 화요일 알림 기능을 내보내며, 공지문은 아래 초안대로 쓰면 됩니다.\n\n"
+                          "| 바뀌는 점 | 사용자에게 보이는 것 |\n|---|---|\n| 마감 알림 | 마감 하루 전·1시간 전에 알림 |\n| 조용한 시간 | 밤 10시~아침 7시에는 알림 안 함 |\n| 팀즈 알림 | 팀 채널로도 받기 (선택) |\n\n"
+                          "**확인할 점**\n- 알림 기록 30일 보관 문구 (법무 검토 의견)\n- 출시일 화요일 확정 여부"},
+        "j-준비": {"id": "j-준비", "team": "t-출시", "team_name": "출시 팀", "text": "다음 주 출시할 알림 기능을 조사·개발 봇에게 나눠 맡기고 진행을 알려줘",
+                 "trigger": "user", "status": "running", "started": _t(15), "ended": None, "note": "", "error": "", "stop": False, "final": "",
+                 "stages": [st("plan", 0, "팀장", "계획", "done", 15, 14, "조사 → 개발 순서로 나눠 맡깁니다.", run="d-팀장"),
+                            st("task", 1, "조사", "할 일 앱 3곳의 알림 기능을 비교해 표로 정리해줘", "done", 14, 9, "세 앱 모두 마감 전 알림 지원", run="d-조사"),
+                            st("task", 1, "개발", "알림 설정 화면을 만들고 테스트까지 돌려줘", "waiting", 8, None, "", run="d-개발")]},
+    }
+    engine.team_busy = {"t-출시": "j-준비"}
     engine.pending = {"demo-ap": {"id": "demo-ap", "run": "d-개발", "bot": "개발", "kind": "approve", "created": _t(1),
                                   "event": threading.Event(), "answer": None, "tool": "Bash", "cat": "test",
                                   "detail": "npm test -- notify", "full": '{"command": "npm test -- notify", "description": "알림 테스트 다시 실행"}'}}
