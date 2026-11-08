@@ -21,6 +21,8 @@ READ_CMDS = ("cat ", "ls", "grep ", "rg ", "find ", "head ", "tail ", "sed -n", 
 
 def classify(name, inp):
     n = name
+    if n.startswith("mcp__mcb__"):   # MyCollaboBot 봇 도구
+        return {"ask_user": "ask", "approve": "ask", "list_bots": "read"}.get(n[10:], "agent")
     if n.startswith(MAUS_TOOL):
         # MausBot이 봇에게 붙여 주는 도구: 사용자에게 묻기, 다른 봇과 주고받기
         low = n.lower()

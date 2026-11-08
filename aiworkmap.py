@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import ai
+import collabo
 import logparse as L
 import updater as U
 
@@ -81,8 +82,17 @@ class Collector:
         tmp.write_text(L.redact(json.dumps(data, ensure_ascii=False)), encoding="utf-8")
         os.replace(tmp, path)
 
+    def _collabo_sessions(self):
+        """MyCollaboBot이 띄운 봇 세션 목록 (세션 id → 봇)."""
+        try:
+            return json.loads((APP_DIR / "bots" / "sessions.json").read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
     def once(self):
         changed = 0
+        mine = self._collabo_sessions()
+        bots_dir = str(APP_DIR / "bots")
         for src in L.find_sources():
             try:
                 pdirs = list(L.project_dirs(src["root"]))
@@ -111,9 +121,12 @@ class Collector:
                             log(f"세션 읽기 실패 {f}: {traceback.format_exc(limit=1)}")
                             continue
                         self.cache[str(f)] = (fsig, s)
+                    if s and s["id"] in mine and not s.get("bot"):
+                        b = mine[s["id"]]
+                        s = {**s, "bot": {"app": "MyCollaboBot", "name": b["name"], "thread": "", "home": (s["cwd"] or "").startswith(bots_dir)}}
                     if s:
                         sessions.append(s)
-                # MausBot 봇 세션은 '봇 팀'으로 모은다. 봇 전용 폴더에서 일한 것은 팀에만, 내 프로젝트에서 일한 것은 양쪽에
+                # MyCollaboBot·MausBot 봇 세션은 '봇 팀'으로 모은다. 봇 전용 폴더에서 일한 것은 팀에만, 내 프로젝트에서 일한 것은 양쪽에
                 bots = [s for s in sessions if s.get("bot")]
                 team = self.team.setdefault(src["key"], {})
                 if bots or pdir.name in team:
@@ -152,7 +165,7 @@ class Collector:
             "key": f"{key}/_mausbot",
             "source": label,
             "machine": L.machine(),
-            "name": "🤖 MausBot 봇 팀",
+            "name": "🤝 MyCollaboBot 봇 팀",
             "team": True,
             "updated": datetime.now().isoformat(timespec="seconds"),
             "memory": [],
@@ -219,6 +232,7 @@ class Viewer:
         self.updater = updater or U.Updater(log=log)
         self.explainer = ai.Explainer(APP_DIR, log=log)
         self.login = ai.Login()
+        self.bots = collabo.Engine(APP_DIR, log=log)
 
     def merged(self):
         projects = []
@@ -267,6 +281,8 @@ class Viewer:
         return {"provider": prov, "providers": st, "login": self.login.state}
 
     def post(self, path, body):
+        if path.startswith("/bots/"):
+            return self.bots_post(path, body)
         if path == "/update/check":
             return self.updater.check()
         if path == "/update/apply":
@@ -298,6 +314,26 @@ class Viewer:
                 turns = sorted((t for x in p["sessions"] for t in x["turns"]), key=lambda t: t.get("start") or "")
             ok, msg = self.explainer.start(eid, prov, title, turns, p.get("source", ""))
             return {"ok": ok, "message": msg, "id": eid}
+        return None
+
+    def bots_post(self, path, body):
+        e = self.bots
+        if self.demo and path != "/bots/answer":
+            return {"ok": False, "message": "예시 데이터 화면에서는 봇을 바꾸거나 실행할 수 없습니다."}
+        try:
+            if path == "/bots/save":
+                return {"ok": True, "bot": e.save_bot(body)}
+            if path == "/bots/delete":
+                e.delete_bot(body.get("id"))
+                return {"ok": True}
+            if path == "/bots/start":
+                return {"ok": True, "run": e.start(body.get("bot"), body.get("task"))["id"]}
+            if path == "/bots/stop":
+                return {"ok": e.stop(body.get("run"))}
+            if path == "/bots/answer":
+                return {"ok": e.answer(body.get("id"), body.get("allow"), body.get("text"))}
+        except (ValueError, RuntimeError) as x:
+            return {"ok": False, "message": str(x)}
         return None
 
     def handler(self):
@@ -343,10 +379,25 @@ class Viewer:
                 elif path == "/ai/explain":
                     from urllib.parse import unquote
                     self._json(viewer.explainer.get(unquote(q.get("id", ""))))
+                elif path == "/bots":
+                    self._json(viewer.bots.snapshot())
+                elif path == "/bots/run":
+                    from urllib.parse import unquote
+                    r = viewer.bots.run_detail(unquote(q.get("id", "")))
+                    self._json(r) if r else self._send(404, b"not found", "text/plain")
                 else:
                     self._send(404, b"not found", "text/plain")
 
             def do_POST(self):
+                if self._local() and self.path.startswith("/mcb/") and self.headers.get("X-MCB-Key") == viewer.bots.key:
+                    # 봇 도구(mcb_mcp)에서 온 요청: 허락·질문은 사람이 답할 때까지 기다렸다 답한다
+                    n = int(self.headers.get("Content-Length") or 0)
+                    try:
+                        body = json.loads(self.rfile.read(n) or b"{}")
+                        return self._json(viewer.bots.mcb(self.path[5:].split("?")[0], body))
+                    except Exception as e:
+                        log("봇 도구 요청 오류: " + traceback.format_exc(limit=2))
+                        return self._json({"behavior": "deny", "message": str(e), "text": f"실패: {e}"})
                 if not self._local() or self.headers.get("X-AIWM-Token") != viewer.token:
                     return self._send(403, b"forbidden", "text/plain")
                 n = int(self.headers.get("Content-Length") or 0)
@@ -367,6 +418,10 @@ class Viewer:
     def serve(self, port):
         # 외부에서 접근하지 못하게 이 PC(127.0.0.1)에서만 연다
         srv = ThreadingHTTPServer(("127.0.0.1", port), self.handler())
+        srv.daemon_threads = True
+        self.bots.url = f"http://127.0.0.1:{port}"
+        if not self.demo:   # 예시 화면에서는 예약이 실제로 돌지 않게
+            threading.Thread(target=self.bots.schedule_loop, daemon=True).start()
         log(f"뷰어 시작 · http://127.0.0.1:{port}/")
         srv.serve_forever()
 
@@ -388,6 +443,7 @@ def main():
         APP_DIR = Path(tempfile.gettempdir()) / "aiworkmap-demo"
         v = Viewer(demo.write(APP_DIR))
         v.demo = True
+        demo.collabo(v.bots)
         if not a.no_open:
             threading.Timer(1.0, webbrowser.open, args=(f"http://127.0.0.1:{a.port}/",)).start()
         v.serve(a.port)

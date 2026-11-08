@@ -129,7 +129,7 @@ def bot_team():
             turn(3, 3, "조용한 시간 기능도 넣어줘", [S("read", "조사결과.md"), S("edit", "settings.js")], "")]),
     ]
     sessions.sort(key=lambda s: s["start"], reverse=True)
-    return {"key": "Mac_demo/_mausbot", "source": "Mac", "machine": "my-mac", "name": "🤖 MausBot 봇 팀",
+    return {"key": "Mac_demo/_mausbot", "source": "Mac", "machine": "my-mac", "name": "🤝 MyCollaboBot 봇 팀",
             "team": True, "updated": _t(0), "sessions": sessions, "memory": []}
 
 
@@ -166,3 +166,54 @@ def write(home):
         {"text": json.dumps(VISUAL, ensure_ascii=False), "visual": VISUAL, "provider": "claude", "turns": 7,
          "at": _t(1), "seconds": 41}, ensure_ascii=False), encoding="utf-8")
     return store
+
+
+def collabo(engine):
+    """MyCollaboBot 예시: 봇 넷, 일을 넘기는 중인 작업, 허락을 기다리는 카드 하나."""
+    import threading
+    home = engine.dir
+    def bot(bid, name, role, eng, approval, sch=None, wd=None):
+        return {"id": bid, "name": name, "role": role, "engine": eng, "approval": approval, "continue": True,
+                "workdir": wd or f"~/.ai-work-map/bots/{bid}/work", "created": _t(3000), "last_fired": None, "session": None,
+                "schedule": sch or {"kind": "off", "time": "09:00", "minutes": 60, "task": ""}}
+    engine.bots = [
+        bot("팀장", "팀장", "일을 나눠 맡기고 결과를 모아 보고한다", "claude", "ask"),
+        bot("조사", "조사", "웹에서 자료를 찾아 정리한다 (읽기만)", "codex", "readonly"),
+        bot("개발", "개발", "team-todo 앱 코드를 고친다", "claude", "edits", wd="~/Developer/team-todo"),
+        bot("정리", "정리", "하루 동안 바뀐 것을 정리한다", "claude", "readonly",
+            {"kind": "weekdays", "time": "18:00", "minutes": 60, "task": "오늘 team-todo에서 바뀐 파일과 커밋을 정리해 daily.md 초안을 보여줘"}),
+    ]
+    def T(cat, tool, detail, ago, **kv):
+        return {"t": _t(ago), "kind": "tool", "cat": cat, "tool": tool, "detail": detail, **kv}
+    def run(rid, b, eng, task, origin, status, ago, end, events, result="", parent=None, children=()):
+        steps = {}
+        for e in events:
+            if e["kind"] == "tool":
+                steps[e["cat"]] = steps.get(e["cat"], 0) + 1
+        return {"id": rid, "bot": b, "bot_name": b, "engine": eng, "task": task, "origin": origin, "parent": parent,
+                "children": list(children), "status": status, "started": _t(ago), "ended": _t(end) if end is not None else None,
+                "session": None, "result": result, "error": "", "events": events, "steps": steps}
+    runs = [
+        run("d-정리", "정리", "claude", "오늘 team-todo에서 바뀐 파일과 커밋을 정리해 daily.md 초안을 보여줘", "schedule", "done", 1100, 1097,
+            [T("git", "Bash", "git log --since=today", 1099), T("read", "Read", "notify.js", 1098),
+             {"t": _t(1097), "kind": "text", "text": "오늘 커밋 3개, 바뀐 파일 5개입니다."}],
+            "**오늘 바뀐 것**\n- 마감 알림 화면 추가 (notify.js)\n- 로그인 오류 메시지 정리\n- 테스트 2개 추가"),
+        run("d-조사", "조사", "codex", "할 일 앱 3곳의 알림 기능을 비교해 표로 정리해줘", "bot:팀장", "done", 14, 9,
+            [T("web", "WebSearch", "할 일 앱 알림 기능", 13), T("web", "WebSearch", "Todoist 마감 알림", 12),
+             T("read", "Bash", "cat 조사메모.md", 11), {"t": _t(9), "kind": "text", "text": "세 앱 모두 ‘마감 전 알림’과 ‘조용한 시간’을 지원합니다."}],
+            "| 앱 | 마감 전 알림 | 조용한 시간 |\n|---|---|---|\n| A | ✅ | ✅ |\n| B | ✅ | ❌ |\n| C | ✅ | ✅ |", parent="d-팀장"),
+        run("d-개발", "개발", "claude", "알림 설정 화면을 만들고 테스트까지 돌려줘. 조사 결과: 마감 전 알림·조용한 시간이 필수", "bot:팀장", "waiting", 8, None,
+            [T("read", "Read", "settings.js", 7), T("edit", "Write", "notify-settings.html", 6), T("edit", "Edit", "settings.js", 5),
+             T("test", "Bash", "npm test", 3, error=True), T("edit", "Edit", "settings.js", 2),
+             {"t": _t(1), "kind": "approve", "pending": "demo-ap", "tool": "Bash", "cat": "test", "detail": "npm test -- notify"}], parent="d-팀장"),
+        run("d-팀장", "팀장", "claude", "다음 주 출시할 알림 기능을 조사·개발 봇에게 나눠 맡기고 진행을 알려줘", "user", "running", 15, None,
+            [{"t": _t(15), "kind": "text", "text": "조사 → 개발 순서로 나눠 맡기겠습니다."}, T("read", "Read", "README.md", 15),
+             {"t": _t(14), "kind": "handoff", "to": "조사", "child": "d-조사", "text": "할 일 앱 3곳의 알림 기능을 비교해 표로 정리해줘"},
+             {"t": _t(9), "kind": "ask", "pending": "x", "question": "출시일을 금요일로 정해도 될까요?", "answer": {"allow": True, "text": "좋아요, 금요일"}},
+             {"t": _t(8), "kind": "handoff", "to": "개발", "child": "d-개발", "text": "알림 설정 화면을 만들고 테스트까지 돌려줘"}],
+            children=("d-조사", "d-개발")),
+    ]
+    engine.runs = {r["id"]: r for r in runs}
+    engine.pending = {"demo-ap": {"id": "demo-ap", "run": "d-개발", "bot": "개발", "kind": "approve", "created": _t(1),
+                                  "event": threading.Event(), "answer": None, "tool": "Bash", "cat": "test",
+                                  "detail": "npm test -- notify", "full": '{"command": "npm test -- notify", "description": "알림 테스트 다시 실행"}'}}
